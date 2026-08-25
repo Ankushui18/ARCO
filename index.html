@@ -37,14 +37,32 @@
   <script src="src/ui-panels.js"></script>
   <script src="src/enhancements.js"></script>
   <script src="src/p0-fixes.js"></script>
+  <script src="src/rotate-interaction.js"></script>
   <script src="src/main.js"></script>
 
 <script>
-if ("serviceWorker" in navigator) {
+// Only register the service worker in production (not on localhost or Vercel
+// preview deployments). The SW itself has the same guard, but unregistering
+// here ensures we don't serve a stale SW on dev hosts after a production run.
+(function(){
+  if (!("serviceWorker" in navigator)) return;
+  const host = location.hostname;
+  const isProd = !/^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(host)
+    && !host.endsWith('.local')
+    && !/penfig-git-/i.test(host)
+    && !/-.*-.*\.vercel\.app$/i.test(host);
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    if (isProd) {
+      navigator.serviceWorker.register("./sw.js").catch(() => {});
+    } else {
+      // Unregister any previously-registered SW so stale cache doesn't cling.
+      navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
+      caches.keys().then(ks => ks.forEach(k => {
+        if (k.startsWith('penfig-app-')) caches.delete(k);
+      }));
+    }
   });
-}
+})();
 </script>
 
 </body>

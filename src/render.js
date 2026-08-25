@@ -702,8 +702,10 @@
   }
 
   // ------------------------------------------------------------- selection overlay (screen space)
-  // Selection overlay drawn in SCREEN space. Single: OBB outline + 8 handles +
-  // rotate handle + size pill. Multi: dashed AABB + 8 handles + count badge.
+  // Selection overlay drawn in SCREEN space. Single: OBB outline + 4 corner
+  // handles + size pill (+ rotation angle label during rotate drag).
+  // Multi: dashed AABB + 4 corner handles + count badge.
+  // Rotation is cursor-driven (no visible dot); see rotate-interaction.js.
   // Compute single-select screen geometry from the SAME world corners
   // used by hit-test and resize. Returns null if node has no resolved
   // geometry yet (first frame, hidden).
@@ -736,16 +738,7 @@
     ctx.rect(p.x - hs/2 + 0.5, p.y - hs/2 + 0.5, hs, hs);
     ctx.fill(); ctx.stroke();
   }
-  function drawRotateTarget(ctx, p) {
-    // Figma-style rotate dot: small white circle, no heavy outline
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 3.5, 0, Math.PI*2);
-    ctx.fillStyle = '#fff';
-    ctx.fill();
-    ctx.strokeStyle = FIGMA_BLUE;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
+
   function drawSelection(ctx, view, ids, page, moving) {
     if (!ids.length) return;
     const FIGMA_BLUE = '#0d99ff';
@@ -784,11 +777,6 @@
       return { x, y, w: x2-x, h: y2-y };
     }, { x: Infinity, y: Infinity, w: 0, h: 0 });
 
-    // Hover state for rotate handle: App sets view._hoverRotate=true when the
-    // pointer is within the top-edge hover zone; default true for ~1.2s after
-    // selection so it's discoverable, then fades to hover-only.
-    const showRotate = view._hoverRotate !== false;
-
     if (rects.length === 1) {
       const { node, corners } = rects[0];
       const [c0,c1,c2,c3] = corners;
@@ -804,27 +792,11 @@
       ctx.lineTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.lineTo(c3.x, c3.y);
       ctx.closePath(); ctx.stroke();
 
-      // 4 CORNER HANDLES ONLY — edge midpoints stay as invisible hit zones
-      // (matches user request; resize along one axis still works via handleAt
-      // which detects edge-zone hits, we just don't paint edge squares).
+      // 4 CORNER HANDLES — edge midpoints stay as invisible hit zones.
+      // (Resize along one axis still works because handleAt detects edge
+      // zones; we just don't paint edge squares.)
       ctx.fillStyle = '#fff'; ctx.strokeStyle = FIGMA_BLUE; ctx.lineWidth = 1;
       for (const p of [c0, c1, c2, c3]) drawHandle(ctx, p, 7);
-
-      // Rotate handle: a small white dot ~20px outside the top edge, with a
-      // short connector line. Only drawn when the pointer is near the top
-      // edge (Figma behavior). Declare rh in outer scope so rot label below
-      // can reference it.
-      let rh = null;
-      if (showRotate) {
-        const nTop = outwardNormal(c0, c1, center);
-        const R_DIST = 20;
-        const CONNECTOR_START = 9;
-        const connectorStart = { x: topMid.x + nTop.nx*CONNECTOR_START, y: topMid.y + nTop.ny*CONNECTOR_START };
-        rh = { x: topMid.x + nTop.nx*R_DIST, y: topMid.y + nTop.ny*R_DIST };
-        ctx.strokeStyle = FIGMA_BLUE; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(connectorStart.x, connectorStart.y); ctx.lineTo(rh.x, rh.y); ctx.stroke();
-        drawRotateTarget(ctx, rh);
-      }
 
       // Size pill — blue rounded rect below the outward-bottom edge.
       const nBot = outwardNormal(c2, c3, center);
@@ -847,13 +819,18 @@
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(label, bx + bw/2, by + bh/2 + 0.5);
 
-      if (node._rotLabel && showRotate && rh) {
+      if (node._rotLabel) {
+        // Rotation angle label — shown during rotate drag, anchored just
+        // above the selection top so it's visible without a rotate dot.
         const at = `${Math.round((node.rotation||0)*180/Math.PI)}°`;
         const aw = ctx.measureText(at).width;
+        const lx = center.x;
+        const ly = topMid.y - 14;
         ctx.fillStyle = '#1e1e1e';
-        roundRectPath(ctx, rh.x - aw/2 - 6, rh.y - 22, aw + 12, 16, 3); ctx.fill();
+        roundRectPath(ctx, lx - aw/2 - 6, ly - 10, aw + 12, 16, 3); ctx.fill();
         ctx.fillStyle = '#fff';
-        ctx.fillText(at, rh.x, rh.y - 14);
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(at, lx, ly - 2);
       }
       ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
     } else {
@@ -875,14 +852,6 @@
       ];
       ctx.fillStyle = '#fff'; ctx.strokeStyle = FIGMA_BLUE; ctx.lineWidth = 1;
       for (const [px,py] of pts) drawHandle(ctx, {x:px,y:py}, 7);
-      if (showRotate) {
-        const topMidU = { x: u.x+u.w/2, y: u.y };
-        const rh = { x: topMidU.x, y: topMidU.y - 20 };
-        const endU = { x: topMidU.x, y: topMidU.y - 9 };
-        ctx.strokeStyle = FIGMA_BLUE; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(endU.x, endU.y); ctx.lineTo(rh.x, rh.y); ctx.stroke();
-        drawRotateTarget(ctx, rh);
-      }
       ctx.textBaseline = 'alphabetic';
     }
     ctx.restore();

@@ -1853,7 +1853,7 @@
     const doc = App.doc;
     App.saveNow();
     try {
-      const bytes = global.Dash.D.exportPfgBytes(doc);
+      const bytes = global.Dash.exportPfgBytes(doc);
       global.Dash.downloadBytes(bytes, doc.name + '.pfg', 'application/zip');
       App.toast('Exported ' + doc.name + '.pfg (Penfig native)', 4000, 'success');
     } catch (err) {

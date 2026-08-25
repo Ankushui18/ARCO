@@ -789,3 +789,28 @@ a { color: inherit; }
 .pf-modal-card { max-height: 82vh; display: flex; flex-direction: column; }
 .pf-modal-body { overflow-y: auto; padding: 14px 16px; flex: 1; }
 .pf-modal-foot { padding: 10px 16px; border-top: 1px solid #2a2a2a; display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ---- Import progress modal ---- */
+.ed-modal-backdrop {
+  position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center;
+  animation: fade-in .12s;
+}
+.ed-import-dialog {
+  width: 380px; background: var(--chrome, #2c2c2c);
+  border: 1px solid #111; border-radius: var(--r4, 8px);
+  padding: 18px 20px; color: #fff;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5);
+}
+.ed-import-title { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.ed-import-title svg { color: var(--accent, #0d99ff); flex-shrink: 0; }
+.ed-import-fname { font-weight: 500; color: #e5e5e5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-import-bar { height: 6px; background: #1a1a1a; border-radius: 3px; overflow: hidden; }
+.ed-import-fill { height: 100%; background: var(--accent, #0d99ff); width: 0%; transition: width .15s ease; border-radius: 3px; }
+.ed-import-status { font-size: 11.5px; color: #999; margin-top: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-height: 14px; }
+.ed-import-cancel {
+  margin-top: 14px; background: #3a3a3a; color: #fff; border: 1px solid #222;
+  padding: 6px 14px; border-radius: 5px; font-size: 12px; cursor: pointer;
+  float: right;
+}
+.ed-import-cancel:hover { background: #4a4a4a; }

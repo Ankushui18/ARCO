@@ -475,7 +475,7 @@
             f.arrayBuffer().then(b => this.openFromBytes(b, f.name, 'pfg'));
             break;
           } else if (/\.fig$/i.test(f.name)) {
-            f.arrayBuffer().then(b => this.openFromBytes(b, f.name, 'fig'));
+            f.arrayBuffer().then(b => this.openFromBytesAsync(b, f.name, 'fig'));
             break;
           }
         }
@@ -511,18 +511,137 @@
     },
     openFromBytes(bytes, name, kind) {
       try {
-        const doc = kind === 'pfg' ? global.Dash.importPfg(bytes) : global.FigConv.importFig(new Uint8Array(bytes));
+        let doc, report = null;
+        if (kind === 'pfg') {
+          doc = global.Dash.importPfg(bytes);
+        } else {
+          const res = global.FigConv.importFig(new Uint8Array(bytes));
+          doc = res.doc;
+          report = res.report;
+        }
         if (!doc) throw new Error('Parse failed');
-        doc.id = M.uid('doc-');
-        doc.name = name.replace(/\.(pfg|fig)$/i, '') || 'Imported';
-        const entry = { id: doc.id, name: doc.name, doc, updatedAt: Date.now() };
-        M.store.put(entry);
-        this.openFile(doc.id);
-        this.toast('Opened ' + doc.name, 2500, 'success');
+        this._commitImportedDoc(doc, name, report, kind);
       } catch (err) {
         console.error(err);
         this.toast('Failed to open ' + name + ': ' + err.message, 5000, 'error');
       }
+    },
+    _commitImportedDoc(doc, name, report, kind) {
+      if (!doc.id) doc.id = M.uid('doc-');
+      doc.name = name.replace(/\.(pfg|fig)$/i, '') || 'Imported';
+      for (const p of doc.pages) M.stampPage(doc, p);
+      const entry = { id: doc.id, name: doc.name, doc, updatedAt: Date.now() };
+      M.store.put(entry);
+      this.openFile(doc.id);
+      if (kind === 'fig' && report) {
+        this.toast(`Imported .fig — ${report.nodes||0} nodes, ${report.pages||0} page(s), ${report.tokens||0} tokens, ${report.images||0} image(s)` + (report.warnings && report.warnings.length ? ` · ${report.warnings.length} note(s)` : ''), 6000, 'success');
+      } else {
+        this.toast('Opened ' + doc.name, 2500, 'success');
+      }
+    },
+    // ---- Async worker-based import (off-main-thread for large files) ----
+    _importWorker: null,
+    _importJobId: 0,
+    supportsImportWorker() {
+      return typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && location.protocol !== 'file:';
+    },
+    openFromBytesAsync(bytes, name, kind) {
+      // Tiering: small files (<10 MB) import synchronously on main thread;
+      // larger files go to the worker with progress UI.
+      const size = bytes && bytes.byteLength != null ? bytes.byteLength : (bytes && bytes.length) || 0;
+      const SMALL = 10 * 1024 * 1024;
+      if (kind !== 'fig' || size < SMALL || !this.supportsImportWorker()) {
+        return this.openFromBytes(bytes, name, kind);
+      }
+      this._startImportWorker(bytes, name, kind);
+    },
+    _startImportWorker(bytes, name, kind) {
+      // Ensure we have an ArrayBuffer to transfer.
+      let ab = bytes;
+      if (ab instanceof Uint8Array) ab = ab.buffer.slice(ab.byteOffset, ab.byteOffset + ab.byteLength);
+      else if (!(ab instanceof ArrayBuffer)) ab = new Uint8Array(ab).buffer;
+
+      const jobId = ++this._importJobId;
+      this._showImportProgress(name, 0, 'Starting worker…');
+
+      let worker;
+      try {
+        worker = new Worker('src/import-worker.js', { type:'classic' });
+      } catch (err) {
+        console.warn('Worker spawn failed, falling back to sync import:', err);
+        this._hideImportProgress();
+        return this.openFromBytes(bytes, name, kind);
+      }
+      this._importWorker = worker;
+
+      worker.onmessage = (e) => {
+        const d = e.data;
+        if (!d || d.id !== jobId) return;
+        if (d.kind === 'progress') {
+          this._showImportProgress(name, d.pct, d.msg, d.phase);
+        } else if (d.kind === 'done') {
+          worker.terminate();
+          this._importWorker = null;
+          this._hideImportProgress();
+          try {
+            this._commitImportedDoc(d.doc, name, d.report, 'fig');
+          } catch (err) {
+            console.error(err);
+            this.toast('Import failed: ' + err.message, 6000, 'error');
+          }
+        } else if (d.kind === 'cancelled') {
+          worker.terminate();
+          this._importWorker = null;
+          this._hideImportProgress();
+          this.toast('Import cancelled', 2500);
+        } else if (d.kind === 'error') {
+          worker.terminate();
+          this._importWorker = null;
+          this._hideImportProgress();
+          console.error('Import worker error:', d.message, d.stack);
+          this.toast('Import failed: ' + d.message, 8000, 'error');
+        }
+      };
+      worker.onerror = (e) => {
+        worker.terminate();
+        this._importWorker = null;
+        this._hideImportProgress();
+        this.toast('Import worker crashed — try a smaller file or reload.', 6000, 'error');
+      };
+      worker.postMessage({ kind:'import', id:jobId, format:kind, bytes:ab, name }, [ab]);
+    },
+    _cancelImportWorker() {
+      if (!this._importWorker) return;
+      this._importWorker.postMessage({ kind:'cancel', id:this._importJobId });
+    },
+    _showImportProgress(name, pct, msg, phase) {
+      let el = document.getElementById('ed-import-progress');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'ed-import-progress';
+        el.className = 'ed-modal-backdrop';
+        el.innerHTML =
+          '<div class="ed-import-dialog">' +
+            '<div class="ed-import-title">' +
+              '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' +
+              '<span class="ed-import-fname">Importing file…</span>' +
+            '</div>' +
+            '<div class="ed-import-bar"><div class="ed-import-fill"></div></div>' +
+            '<div class="ed-import-status">Starting…</div>' +
+            '<button class="ed-import-cancel">Cancel</button>' +
+          '</div>';
+        const ed = document.getElementById('view-editor');
+        if (ed) ed.appendChild(el);
+        el.querySelector('.ed-import-cancel').addEventListener('click', () => this._cancelImportWorker());
+      }
+      el.style.display = 'flex';
+      el.querySelector('.ed-import-fname').textContent = name || 'Importing…';
+      el.querySelector('.ed-import-fill').style.width = Math.max(2, Math.min(100, pct|0)) + '%';
+      el.querySelector('.ed-import-status').textContent = msg || '';
+    },
+    _hideImportProgress() {
+      const el = document.getElementById('ed-import-progress');
+      if (el) el.style.display = 'none';
     },
     resizeCanvas() {
       const c = this.canvas;

@@ -280,31 +280,19 @@
     },
     async importFile(file) {
       if (!file) return;
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const name = file.name.toLowerCase();
-      try {
-        let doc;
-        if (name.endsWith('.pfg')) {
-          doc = this.importPfg(bytes);
-        } else if (name.endsWith('.fig')) {
-          const res = global.FigConv.importFig(bytes);
-          doc = res.doc;
-          const r = res.report;
-          global.App.toast(`Imported .fig — ${r.nodes} nodes, ${r.pages} page(s), ${r.tokens} tokens, ${r.images} image(s)` + (r.warnings.length ? ` · ${r.warnings.length} note(s)` : ''), 6000, 'success');
-        } else {
-          // try pfg (json zip)
-          try { doc = this.importPfg(bytes); }
-          catch { doc = global.FigConv.importFig(bytes).doc; }
-        }
-        if (!doc.id) doc.id = M.uid('doc-');
-        doc.name = file.name.replace(/\.(fig|pfg)$/i, '');
-        saveDoc(doc);
-        this.render();
-        global.App.openFile(doc.id);
-        if (name.endsWith('.pfg')) global.App.toast(`Imported .pfg — "${doc.name}"`, 4000, 'success');
-      } catch (err) {
-        console.error(err);
-        global.App.toast('Import failed: ' + err.message, 8000, 'error');
+      const ab = await file.arrayBuffer();
+      const lower = file.name.toLowerCase();
+      // Delegate to App's importer — it handles sync-vs-worker tiering,
+      // progress UI, and staged commit.
+      const A = global.App;
+      if (lower.endsWith('.pfg')) {
+        A.openFromBytes(new Uint8Array(ab), file.name, 'pfg');
+      } else if (lower.endsWith('.fig')) {
+        A.openFromBytesAsync(ab, file.name, 'fig');
+      } else {
+        // Unknown extension: try pfg then fall back to fig.
+        try { A.openFromBytes(new Uint8Array(ab), file.name, 'pfg'); }
+        catch (_) { A.openFromBytesAsync(ab, file.name, 'fig'); }
       }
     },
     exportFig(id) {
