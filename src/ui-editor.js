@@ -4,6 +4,14 @@
   const M = global.Model;
   const R = global.Renderer;
   const T = global.Tokens;
+  const Icons = global.Icons;
+  const Ico = Icons.svg;
+  const esc = global.Dash.esc;
+  function parseSvg(name, size) {
+    const t = document.createElement('template');
+    t.innerHTML = Ico(name, { size });
+    return t.content.firstChild;
+  }
 
   const App = {
     doc: null, pageIndex: 0,
@@ -65,6 +73,7 @@
       document.getElementById('view-editor').style.display = 'none';
       const d = document.getElementById('view-dashboard');
       d.style.display = 'flex';
+      document.body.classList.add('dash-mode');
       global.Dash.D.render();
     },
     showEditor() {
@@ -141,32 +150,46 @@
 
     // ------------------------------------------------------------- chrome
     buildChrome() {
+      document.body.classList.remove('dash-mode');
       const ed = document.getElementById('view-editor');
+      const docName = M.esc ? M.esc(this.doc.name) : esc(this.doc.name);
       ed.innerHTML = `
       <div class="ed-top">
-        <button id="ed-back" class="ed-iconbtn" title="Back to files (Esc)">←</button>
-        <input id="ed-filename" class="ed-filename" value="${M.esc ? '' : ''}">
-        <span class="ed-pagename" id="ed-pagename"></span>
-        <div class="ed-top-mid">
+        <button id="ed-back" class="ed-iconbtn" title="Back to files (Esc)">${Ico('chevron_l',{size:16})}</button>
+        <div class="ed-filename-wrap">
+          <input id="ed-filename" class="ed-filename" value="${docName}" spellcheck="false">
+          <span class="ed-pagename" id="ed-pagename" title="Double-click to rename page"></span>
+        </div>
+        <div class="ed-top-divider"></div>
+        <button id="ed-undo" class="ed-iconbtn" title="Undo (⌘Z)">${Ico('undo',{size:16})}</button>
+        <button id="ed-redo" class="ed-iconbtn" title="Redo (⇧⌘Z)">${Ico('redo',{size:16})}</button>
+        <div class="ed-top-divider"></div>
+        <div class="ed-top-mid" id="ed-modes-wrap">
           <div class="seg" id="ed-modes"></div>
         </div>
-        <button id="ed-present" class="ed-btn" title="Present prototype (P)">▶ Present</button>
-        <button id="ed-devmode" class="ed-btn" title="Dev mode (D) — inspect + code">⟨/⟩ Dev</button>
-        <button id="ed-versions" class="ed-btn" title="Version history">🕘 Versions</button>
-        <button id="ed-plugins" class="ed-btn" title="Plugins">⚙ Plugins</button>
-        <button id="ed-view" class="ed-btn" title="View — rulers, grid, snapping">View ▾</button>
-        <span id="ed-peers" class="ed-peers" title="People in this file"></span>
-        <button id="ed-export" class="ed-btn">Export ▾</button>
-        <button id="ed-tokens" class="ed-btn">Tokens</button>
+        <div class="ed-top-right">
+          <button id="ed-rulers" class="ed-iconbtn" title="Toggle rulers" aria-label="Rulers">${Ico('ruler',{size:16})}</button>
+          <button id="ed-grid" class="ed-iconbtn" title="Toggle grid" aria-label="Grid">${Ico('grid',{size:14})}</button>
+          <button id="ed-snap" class="ed-iconbtn" title="Toggle snap to objects" aria-label="Snap">${Ico('magnet',{size:16})}</button>
+          <div class="ed-top-divider"></div>
+          <button id="ed-present" class="ed-btn" title="Present prototype (⇧K)">${Ico('play',{size:12})} Present</button>
+          <button id="ed-devmode" class="ed-btn" title="Dev mode (D) — inspect + code">${Ico('dev',{size:14})} Inspect</button>
+          <button id="ed-versions" class="ed-btn" title="Version history (⌘K)">${Ico('history',{size:14})}</button>
+          <button id="ed-plugins" class="ed-btn" title="Plugins">${Ico('plugin',{size:14})}</button>
+          <button id="ed-share" class="ed-btn" title="Share / save">${Ico('save',{size:13})} Save</button>
+          <div class="ed-top-divider"></div>
+          <span id="ed-peers" class="ed-peers" title="People in this file"></span>
+          <button id="ed-export" class="ed-btn active" title="Export (⌘E)">${Ico('download',{size:13})} Export</button>
+        </div>
       </div>
       <div class="ed-body">
         <div class="ed-left">
           <div class="ed-left-tabs">
-            <button class="ed-ltab active" data-tab="layers">Layers</button>
-            <button class="ed-ltab" data-tab="assets">Assets</button>
-            <button class="ed-ltab" data-tab="styles">Styles</button>
-            <button class="ed-ltab" data-tab="pages">Pages</button>
-            <button class="ed-ltab" data-tab="vars">Tokens</button>
+            <button class="ed-ltab active" data-tab="layers" title="Layers">${Ico('layers',{size:13})}<span>Layers</span></button>
+            <button class="ed-ltab" data-tab="assets" title="Assets">${Ico('component',{size:14})}<span>Assets</span></button>
+            <button class="ed-ltab" data-tab="styles" title="Styles">${Ico('styles',{size:14})}<span>Styles</span></button>
+            <button class="ed-ltab" data-tab="pages" title="Pages">${Ico('pages',{size:13})}<span>Pages</span></button>
+            <button class="ed-ltab" data-tab="vars" title="Variables / tokens">${Ico('tokens',{size:13})}<span>Tokens</span></button>
           </div>
           <div class="ed-left-content">
             <div id="ed-layers" class="ed-panel-body"></div>
@@ -176,31 +199,35 @@
             <div id="ed-vars" class="ed-panel-body" style="display:none"></div>
           </div>
         </div>
-        <div class="ed-canvas-wrap">
+        <div class="ed-canvas-wrap" id="ed-canvas-wrap">
           <canvas id="ed-canvas"></canvas>
           <div class="ed-pins" id="ed-pins"></div>
           <div class="ed-toolbar" id="ed-toolbar">
-            ${toolBtn('move', 'M', '↖', 'Move', 'V')}
-            ${toolBtn('frame', 'F', '▭', 'Frame', 'F')}
-            ${toolBtn('section', 'S', '⊞', 'Section', 'S')}
-            ${toolBtn('rect', 'R', '■', 'Rectangle', 'R')}
-            ${toolBtn('ellipse', 'O', '●', 'Ellipse', 'O')}
-            ${toolBtn('line', 'L', '—', 'Line', 'L')}
-            ${toolBtn('arrow', 'A', '→', 'Arrow', 'A')}
-            ${toolBtn('pen', 'P', '✒', 'Pen', 'P')}
-            ${toolBtn('pencil', 'N', '✎', 'Pencil', 'N')}
-            ${toolBtn('polygon', '', '⬡', 'Polygon')}
-            ${toolBtn('star', '', '✦', 'Star')}
-            ${toolBtn('triangle', '', '▲', 'Triangle')}
-            ${toolBtn('text', 'T', 'T', 'Text', 'T')}
-            ${toolBtn('comment', 'C', '💬', 'Comment', 'C')}
-            ${toolBtn('hand', 'H', '✋', 'Hand', 'H')}
+            ${Icons.toolBtn('move','move','Move','V')}
+            ${Icons.toolBtn('frame','frame','Frame','F')}
+            ${Icons.toolBtn('section','section','Section','S')}
+            <div class="tb-sep"></div>
+            ${Icons.toolBtn('rect','rect','Rectangle','R')}
+            ${Icons.toolBtn('ellipse','ellipse','Ellipse','O')}
+            ${Icons.toolBtn('line','line','Line','L')}
+            ${Icons.toolBtn('arrow','arrow','Arrow','A')}
+            <div class="tb-sep"></div>
+            ${Icons.toolBtn('pen','pen','Pen (vector)','P')}
+            ${Icons.toolBtn('pencil','pencil','Pencil','N')}
+            ${Icons.toolBtn('polygon','polygon','Polygon')}
+            ${Icons.toolBtn('star','star','Star')}
+            ${Icons.toolBtn('triangle','triangle','Triangle')}
+            <div class="tb-sep"></div>
+            ${Icons.toolBtn('text','text','Text','T')}
+            ${Icons.toolBtn('comment','comment','Comment','C')}
+            <div class="tb-sep"></div>
+            ${Icons.toolBtn('hand','hand','Hand / pan','H')}
           </div>
           <div class="ed-zoom" id="ed-zoom">
-            <button id="zoom-out">−</button>
+            <button id="zoom-out" title="Zoom out">${Ico('minus',{size:14})}</button>
             <button id="zoom-pct" title="Zoom to 100%">100%</button>
-            <button id="zoom-in">+</button>
-            <button id="zoom-fit" title="Zoom to fit">⤢</button>
+            <button id="zoom-in" title="Zoom in">${Ico('plus',{size:14})}</button>
+            <button id="zoom-fit" title="Zoom to fit (⇧1)">${Ico('zoomfit',{size:14})}</button>
           </div>
           <div class="ed-status" id="ed-status"></div>
         </div>
@@ -231,28 +258,56 @@
       ed.querySelector('#zoom-pct').addEventListener('click', () => { const c = centerOf(this.canvas); this.zoomAt(c.x, c.y, 1 / this.view.zoom); });
       ed.querySelector('#zoom-fit').addEventListener('click', () => this.zoomToFit());
       ed.querySelector('#ed-export').addEventListener('click', (e) => { e.stopPropagation(); global.Panels.exportMenu(e.clientX, e.clientY); });
-      ed.querySelector('#ed-tokens').addEventListener('click', () => {
-        ed.querySelector('[data-tab="vars"]').click();
-      });
       ed.querySelector('#ed-present').addEventListener('click', () => this.startPresent());
       ed.querySelector('#ed-devmode').addEventListener('click', () => this.toggleDevMode());
-      ed.querySelector('#ed-view').addEventListener('click', (e) => { e.stopPropagation(); global.Panels.viewMenu(e.clientX, e.clientY); });
+      ed.querySelector('#ed-view')?.addEventListener?.('click', (e) => { e.stopPropagation(); global.Panels.viewMenu(e.clientX, e.clientY); });
+      ed.querySelector('#ed-undo').addEventListener('click', () => this.historyUndo());
+      ed.querySelector('#ed-redo').addEventListener('click', () => this.historyRedo());
+      ed.querySelector('#ed-rulers').addEventListener('click', () => { this.view.rulers = !this.view.rulers; this.syncViewToggles(); this.markDirty(); });
+      ed.querySelector('#ed-grid').addEventListener('click', () => { this.view.grid = this.view.grid ? null : (this.view.gridSize || 10); this.syncViewToggles(); this.markDirty(); });
+      ed.querySelector('#ed-snap').addEventListener('click', () => { this.view.snap = !this.view.snap; this.syncViewToggles(); this.markDirty(); });
+      ed.querySelector('#ed-share').addEventListener('click', () => { this.saveNow(); this.toast('Saved to this browser', 2000, 'success'); });
       ed.querySelector('#ed-versions').addEventListener('click', (e) => { e.stopPropagation(); global.Panels.versionsMenu(e.clientX, e.clientY); });
       ed.querySelector('#ed-plugins').addEventListener('click', (e) => { e.stopPropagation(); global.Panels.pluginsModal(); });
       this.setTool('move');
+      this.syncViewToggles();
       global.Panels.renderPages();
       global.Panels.refreshLayers();
       global.Panels.refreshInspector();
       this.renderModes();
       this.updateZoomLabel();
+      this.renderPagename();
+      // double-click page name → rename
+      const pn = ed.querySelector('#ed-pagename');
+      if (pn) pn.addEventListener('dblclick', () => {
+        const name = prompt('Rename page', this.page.name);
+        if (name && name.trim()) { this.page.name = name.trim(); this.renderPagename(); global.Panels.renderPages(); this.markDirty(); }
+      });
+    },
+    renderPagename() {
+      const el = document.getElementById('ed-pagename');
+      if (!el || !this.page) return;
+      el.innerHTML = `${Ico('chevron_r',{size:10})} ${esc(this.page.name)}`;
+    },
+    syncViewToggles() {
+      const on = (id, on) => { const b = document.getElementById(id); if (b) b.classList.toggle('active', !!on); };
+      on('ed-rulers', this.view.rulers);
+      on('ed-grid', !!this.view.grid);
+      on('ed-snap', this.view.snap);
     },
     renderModes() {
       const el = document.getElementById('ed-modes');
       if (!el) return;
       const doc = this.doc;
+      const modeIcon = (name) => {
+        const n = name.toLowerCase();
+        if (n.includes('dark') || n.includes('night')) return Ico('moon',{size:11});
+        return Ico('sun',{size:11});
+      };
       el.innerHTML = doc.vars.modes.map(m =>
-        `<button class="seg-btn ${m.id === doc.vars.defaultMode ? 'active' : ''}" data-m="${m.id}">${global.Dash.esc(m.name)}</button>`).join('');
-      el.querySelectorAll('.seg-btn').forEach(b => b.addEventListener('click', () => {
+        `<button class="seg-btn ${m.id === doc.vars.defaultMode ? 'active' : ''}" data-m="${m.id}">${modeIcon(m.name)}${esc(m.name)}</button>`).join('') +
+        `<button class="seg-btn" id="mode-add" title="Add mode">${Ico('plus',{size:11})}</button>`;
+      el.querySelectorAll('.seg-btn[data-m]').forEach(b => b.addEventListener('click', () => {
         this.history.begin(this.doc);
         doc.vars.defaultMode = b.dataset.m;
         this.history.end(this.doc);
@@ -260,6 +315,16 @@
         this.markDirty();
         global.Panels.refreshInspector();
       }));
+      const add = el.querySelector('#mode-add');
+      if (add) add.addEventListener('click', () => {
+        const name = prompt('New mode name', 'Mode ' + (doc.vars.modes.length + 1));
+        if (!name) return;
+        this.history.begin(this.doc);
+        T.addMode(doc, name);
+        this.history.end(this.doc);
+        this.renderModes();
+        this.markDirty();
+      });
     },
     updateZoomLabel() {
       const el = document.getElementById('zoom-pct');
@@ -1741,7 +1806,7 @@
         <div class="present-bar">
           <span class="present-screen"></span>
           <span class="present-hint">Click a <b>blue-outlined</b> node to navigate · Esc to exit</span>
-          <button class="ed-iconbtn present-exit">✕ Exit</button>
+          <button class="ed-iconbtn present-exit" id="present-exit-btn" title="Exit present (Esc)">${Ico('close',{size:12})} Exit</button>
         </div>
         <div class="present-stage">
           <canvas class="present-canvas front"></canvas>
@@ -1981,18 +2046,27 @@
     },
 
     // ------------------------------------------------------------- toast
-    toast(msg, ms, actions) {
+    toast(msg, ms, actionsOrKind) {
       let el = document.getElementById('penfig-toast');
       if (!el) {
         el = document.createElement('div');
         el.id = 'penfig-toast';
         document.body.appendChild(el);
       }
+      el.className = '';
       el.innerHTML = '';
+      // 3rd arg may be actions[] or a kind string ('success'/'error')
+      let actions = [];
+      let kind = '';
+      if (Array.isArray(actionsOrKind)) actions = actionsOrKind;
+      else if (typeof actionsOrKind === 'string') kind = actionsOrKind;
+      if (kind) el.classList.add(kind);
+      const iconMap = { success: 'check', error: 'warn' };
+      if (iconMap[kind]) el.appendChild(parseSvg(iconMap[kind], 14));
       const span = document.createElement('span');
       span.textContent = msg;
       el.appendChild(span);
-      if (actions && actions.length) {
+      if (actions.length) {
         const wrap = document.createElement('span');
         wrap.className = 'toast-actions';
         for (const a of actions) {
@@ -2003,7 +2077,7 @@
         }
         el.appendChild(wrap);
       }
-      el.classList.add('show');
+      requestAnimationFrame(() => el.classList.add('show'));
       clearTimeout(el._t);
       el._t = setTimeout(() => el.classList.remove('show'), ms || 3500);
     },
@@ -2024,9 +2098,6 @@
     };
     for (const tid of page.tops) { const t = page.nodes[tid]; if (t) visit(t); }
     return out;
-  }
-  function toolBtn(tool, icon, glyph, label, key) {
-    return `<button class="tool" data-tool="${tool}" title="${label}${key ? ' (' + key + ')' : ''}"><span>${glyph}</span></button>`;
   }
 
   global.App = App;

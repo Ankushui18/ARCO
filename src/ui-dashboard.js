@@ -3,6 +3,8 @@
   'use strict';
   const M = global.Model;
   const R = global.Renderer;
+  const Ico = global.Icons.svg;
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   // ------------------------------------------------------------- starter file
   function makeStarterDoc() {
@@ -42,11 +44,11 @@
     nav.al.gap = { n: 12, tok: null };
     nav.al.main = 'start'; nav.al.cross = 'center';
     const logo = M.makeNode('text', { name: 'Logo', w: 110, h: 24 });
-    logo.text = { ...logo.text, content: '⚡ Penfig', size: 20, weight: 700, token: primary, font: 'Inter' };
+    logo.text = { ...logo.text, content: 'Penfig', size: 20, weight: 700, token: primary, font: 'Inter' };
     logo.fills = [{ type: 'solid', color: '#0d99ff', opacity: 1, token: primary }];
     M.attach(doc, page, nav.id, logo);
     ['Home', 'Design', 'Tokens', 'Docs'].forEach((t, i) => {
-      const link = M.makeNode('text', { name: 'Link ' + t, w: 40, h: 18 });
+      const link = M.makeNode('text', { name: 'Link ' + t, w: 48, h: 18 });
       link.text = { ...link.text, content: t, size: 14, weight: 500, token: textC };
       link.fills = [{ type: 'solid', color: '#1e1e1e', opacity: 0.75, token: textC }];
       M.attach(doc, page, nav.id, link);
@@ -57,6 +59,9 @@
         sp.als = { w: 'fixed', h: 'fixed', grow: 0, align: 'auto', absolute: false };
       }
     });
+    const navSpacer = M.makeNode('frame', { w: 1, h: 1, name: 'spacer' });
+    navSpacer.fills = []; navSpacer.als = { w: 'fill', h: 'fixed', grow: 1, align: 'auto', absolute: false };
+    M.attach(doc, page, nav.id, navSpacer);
     const navBtn = M.makeNode('frame', { w: 108, h: 36, name: 'Sign up' });
     navBtn.fills = [{ type: 'solid', color: '#0d99ff', opacity: 1, token: primary }];
     navBtn.radius = [18, 18, 18, 18];
@@ -67,7 +72,6 @@
     navBtnT.fills = [{ type: 'solid', color: '#ffffff', opacity: 1 }];
     navBtnT.als = { w: 'hug', h: 'hug', grow: 0, align: 'auto', absolute: false };
     M.attach(doc, page, navBtn.id, navBtnT);
-    // center the text in the button
     navBtnT.x = 24; navBtnT.y = 9;
 
     // hero
@@ -151,69 +155,98 @@
     el: null,
     filter: '',
     render() {
+      document.body.classList.add('dash-mode');
       const root = document.getElementById('view-dashboard');
       const files = M.store.all().sort((a, b) => b.updatedAt - a.updatedAt);
       const filtered = files.filter(f => f.name.toLowerCase().includes(this.filter.toLowerCase()));
       root.innerHTML = `
         <aside class="db-side">
           <div class="db-logo">
-            <svg width="22" height="22" viewBox="0 0 24 24"><path fill="#0d99ff" d="M12 2 2 12l10 10 10-10L12 2z"/><circle cx="12" cy="12" r="3.4" fill="#fff"/></svg>
-            <b>Penfig</b>
+            ${Ico('logo', { size: 22 })}
+            <div><b>Penfig</b><div class="db-logo-sub">Design, offline.</div></div>
           </div>
           <nav class="db-nav">
-            <a class="active" href="#/">Recents</a>
-            <a href="#/">Files</a>
-            <a href="#/about">About</a>
+            <a class="active" href="#/">${Ico('recent', { size: 14 })}<span>Recents</span></a>
+            <a href="#/">${Ico('draft', { size: 14 })}<span>All files</span></a>
+            <a href="#/" id="db-import-link">${Ico('file_import', { size: 14 })}<span>Import .fig</span></a>
+            <input type="file" id="db-import-file" accept=".fig,.pfg" hidden>
           </nav>
           <div class="db-side-foot">
-            <button id="db-import" class="db-btn">Import .fig…</button>
-            <input type="file" id="db-import-file" accept=".fig" hidden>
-            <div class="db-tip">Penfig — Figma-style design, real .fig I/O, token system &amp; auto layout (no flexbox).</div>
+            <button id="db-import" class="db-btn secondary">${Ico('file_import', { size: 14 })} Import .fig / .pfg…</button>
+            <div class="db-tip">
+              Penfig is an offline-first design tool. All files stay in this browser.
+              Open/save real <b>.fig</b> files, and export to PNG/SVG/PDF/CSS.
+            </div>
           </div>
         </aside>
         <main class="db-main">
+          <div class="db-hero">
+            <div>
+              <h2>Welcome to Penfig</h2>
+              <p>A Figma/Sketch-class design tool that runs anywhere — Vercel, local server, even double-clicked offline.</p>
+            </div>
+            <div class="db-hero-actions">
+              <button id="db-new2" class="db-btn">${Ico('plus', { size: 14 })} New design file</button>
+            </div>
+          </div>
           <div class="db-top">
             <h1>Recents</h1>
-            <div class="db-search"><span>⌕</span><input id="db-search" placeholder="Search files" value="${this.filter.replace(/"/g, '&quot;')}"></div>
-            <button id="db-new" class="db-primary">+ New design file</button>
+            <div class="db-search">${Ico('search', { size: 14 })}<input id="db-search" placeholder="Search files" value="${esc(this.filter)}"></div>
+            <button id="db-new" class="db-primary">${Ico('plus', { size: 14 })} New design file</button>
           </div>
           <div class="db-grid">
             <div class="db-card db-new-card" id="db-new-card">
-              <div class="db-new-inner"><span>+</span><b>New design</b><small>Blank or starter kit</small></div>
+              <div class="db-new-inner">${Ico('plus', { size: 28 })}<b>New design</b><small>Blank or starter kit</small></div>
             </div>
             ${filtered.map(f => `
               <div class="db-card" data-id="${f.id}">
-                <div class="db-thumb"><img src="${f.thumb || 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22300%22 height=%22180%22><rect width=%22300%22 height=%22180%22 fill=%22%23e9eaee%22/></svg>'}" alt=""></div>
+                <div class="db-thumb">
+                  ${f.thumb
+                    ? `<img src="${f.thumb}" alt="">`
+                    : `<div class="db-thumb-fallback">${Ico('draft', { size: 40 })}</div>`}
+                </div>
                 <div class="db-card-meta">
-                  <div class="db-card-name">${esc(f.name)}</div>
-                  <div class="db-card-sub">${ago(f.updatedAt)} · ${f.pageCount || 1} page${(f.pageCount || 1) > 1 ? 's' : ''}</div>
+                  <div class="db-card-name">${Ico('draft', { size: 12 })} ${esc(f.name)}</div>
+                  <div class="db-card-sub">${Ico('pages', { size: 10 })} ${f.pageCount || 1} page${(f.pageCount || 1) > 1 ? 's' : ''} · ${ago(f.updatedAt)}</div>
                   <div class="db-card-actions">
-                    <button data-act="rename">Rename</button>
-                    <button data-act="duplicate">Duplicate</button>
-                    <button data-act="export-fig">.fig</button>
-                    <button data-act="delete">Delete</button>
+                    <button data-act="open">${Ico('folder', { size: 11 })} Open</button>
+                    <button data-act="rename">${Ico('edit', { size: 11 })} Rename</button>
+                    <button data-act="duplicate">${Ico('duplicate', { size: 11 })} Duplicate</button>
+                    <button data-act="export-fig">${Ico('download', { size: 11 })} .fig</button>
+                    <button data-act="export-pfg">${Ico('pfg', { size: 11 })} .pfg</button>
+                    <button data-act="delete" class="danger">${Ico('trash', { size: 11 })} Delete</button>
                   </div>
                 </div>
               </div>`).join('')}
           </div>
         </main>`;
       // bindings
-      root.querySelector('#db-search').addEventListener('input', (e) => { this.filter = e.target.value; this.render(); const el = root.querySelector('#db-search'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); });
+      const searchInput = root.querySelector('#db-search');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => { this.filter = e.target.value; this.render(); const el = root.querySelector('#db-search'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } });
+      }
       root.querySelector('#db-new').addEventListener('click', () => this.newFileModal());
+      root.querySelector('#db-new2').addEventListener('click', () => this.newFileModal());
       root.querySelector('#db-new-card').addEventListener('click', () => this.newFileModal());
-      root.querySelector('#db-import').addEventListener('click', () => root.querySelector('#db-import-file').click());
+      const openImport = () => root.querySelector('#db-import-file').click();
+      root.querySelector('#db-import').addEventListener('click', openImport);
+      root.querySelector('#db-import-link').addEventListener('click', (e) => { e.preventDefault(); openImport(); });
       root.querySelector('#db-import-file').addEventListener('change', (e) => this.importFile(e.target.files[0]));
       root.querySelectorAll('.db-card[data-id]').forEach(card => {
         const id = card.dataset.id;
-        card.addEventListener('dblclick', () => global.App.openFile(id));
-        card.querySelector('.db-thumb').addEventListener('click', () => global.App.openFile(id));
+        const open = () => global.App.openFile(id);
+        card.addEventListener('dblclick', open);
+        card.querySelector('.db-thumb').addEventListener('click', open);
+        card.querySelector('.db-card-name').addEventListener('click', open);
         card.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', (ev) => {
           ev.stopPropagation();
           const act = btn.dataset.act;
-          if (act === 'delete') this.deleteFile(id);
+          if (act === 'open') open();
+          else if (act === 'delete') this.deleteFile(id);
           else if (act === 'duplicate') this.duplicateFile(id);
           else if (act === 'rename') this.renameFile(id);
           else if (act === 'export-fig') this.exportFig(id);
+          else if (act === 'export-pfg') this.exportPfg(id);
         }));
       });
     },
@@ -221,14 +254,14 @@
       const m = document.createElement('div');
       m.className = 'modal-back';
       m.innerHTML = `<div class="modal">
-        <h3>New design file</h3>
+        <h3>${Ico('file_new', { size: 16 })} New design file</h3>
         <label class="fld"><span>Name</span><input id="nf-name" value="Untitled" spellcheck="false"></label>
         <label class="fld"><span>Template</span>
           <select id="nf-tpl">
-            <option value="blank">Blank</option>
+            <option value="blank">Blank canvas</option>
             <option value="starter" selected>UI Starter Kit (tokens + auto layout demo)</option>
           </select></label>
-        <div class="modal-btns"><button class="btn ghost" data-x>Cancel</button><button class="btn primary" id="nf-ok">Create</button></div>
+        <div class="modal-btns"><button class="btn ghost" data-x>Cancel</button><button class="btn primary" id="nf-ok">${Ico('plus', { size: 12 })} Create</button></div>
       </div>`;
       document.body.appendChild(m);
       const close = () => m.remove();
@@ -248,42 +281,107 @@
     async importFile(file) {
       if (!file) return;
       const bytes = new Uint8Array(await file.arrayBuffer());
+      const name = file.name.toLowerCase();
       try {
-        const { doc, report } = global.FigConv.importFig(bytes);
-        doc.id = M.uid('doc-');
-        doc.name = file.name.replace(/\.fig$/i, '');
+        let doc;
+        if (name.endsWith('.pfg')) {
+          doc = this.importPfg(bytes);
+        } else if (name.endsWith('.fig')) {
+          const res = global.FigConv.importFig(bytes);
+          doc = res.doc;
+          const r = res.report;
+          global.App.toast(`Imported .fig — ${r.nodes} nodes, ${r.pages} page(s), ${r.tokens} tokens, ${r.images} image(s)` + (r.warnings.length ? ` · ${r.warnings.length} note(s)` : ''), 6000, 'success');
+        } else {
+          // try pfg (json zip)
+          try { doc = this.importPfg(bytes); }
+          catch { doc = global.FigConv.importFig(bytes).doc; }
+        }
+        if (!doc.id) doc.id = M.uid('doc-');
+        doc.name = file.name.replace(/\.(fig|pfg)$/i, '');
         saveDoc(doc);
-        global.App.toast(`Imported “${doc.name}” — ${report.nodes} nodes, ${report.pages} page(s), ${report.tokens} tokens, ${report.images} image(s)` + (report.warnings.length ? ` · ${report.warnings.length} note(s)` : ''), 6000);
         this.render();
         global.App.openFile(doc.id);
+        if (name.endsWith('.pfg')) global.App.toast(`Imported .pfg — "${doc.name}"`, 4000, 'success');
       } catch (err) {
         console.error(err);
-        global.App.toast('Import failed: ' + err.message, 6000);
+        global.App.toast('Import failed: ' + err.message, 8000, 'error');
       }
     },
     exportFig(id) {
       const entry = M.store.get(id);
       if (!entry) return;
-      const doc = entry.doc;
-      for (const p of doc.pages) M.stampPage(doc, p);
-      global.App.layoutDoc(doc);
-      const page = doc.pages[0];
-      const thumb = thumbDataURL(doc, page, 240);
+      const doc = JSON.parse(JSON.stringify(entry.doc));
+      try { global.App.layoutDoc(doc); } catch (e) { console.warn('layout pre-export failed', e); }
+      let thumb = '';
+      try { thumb = thumbDataURL(doc, doc.pages[0], 480); } catch (e) { console.warn('thumb failed', e);}
       try {
         const bytes = global.FigConv.exportFig(doc, { thumbnail: thumb });
-        downloadBytes(bytes, doc.name + '.fig');
-        global.App.toast('Exported ' + doc.name + '.fig — opens in Figma for supported node types', 5000);
+        downloadBytes(bytes, doc.name + '.fig', 'application/x-figma');
+        global.App.toast('Exported ' + doc.name + '.fig — opens in Figma for supported node types', 5000, 'success');
       } catch (err) {
         console.error(err);
-        global.App.toast('.fig export failed: ' + err.message, 6000);
+        global.App.toast('.fig export failed: ' + err.message, 8000, 'error');
       }
+    },
+    exportPfg(id) {
+      const entry = M.store.get(id);
+      if (!entry) return;
+      const doc = entry.doc;
+      try {
+        const bytes = this.exportPfgBytes(doc);
+        downloadBytes(bytes, doc.name + '.pfg', 'application/zip');
+        global.App.toast('Exported ' + doc.name + '.pfg (Penfig native format)', 4000, 'success');
+      } catch (err) {
+        console.error(err);
+        global.App.toast('.pfg export failed: ' + err.message, 8000, 'error');
+      }
+    },
+    /* PFG = Penfig native format. Deterministic ZIP:
+       manifest.json (version, createdAt), document.json, pages/*.json, thumbnails/thumb.png */
+    exportPfgBytes(doc) {
+      // Minimal ZIP store (no compression) so we don't need JSZip
+      const files = [];
+      const manifest = {
+        format: 'penfig',
+        version: 1,
+        createdAt: new Date().toISOString(),
+        name: doc.name,
+        app: 'penfig/1.0',
+      };
+      files.push({ name: 'manifest.json', data: str2u8(JSON.stringify(manifest, null, 2)) });
+      const cleanDoc = JSON.parse(JSON.stringify(doc));
+      // Strip transient _l layout caches to keep file small/deterministic
+      const strip = (n) => { if (n && typeof n === 'object') { delete n._l; Object.values(n).forEach(v => { if (v && typeof v === 'object') strip(v);}); } };
+      strip(cleanDoc);
+      files.push({ name: 'document.json', data: str2u8(JSON.stringify(cleanDoc, null, 2)) });
+      let thumb;
+      try { thumb = thumbDataURL(doc, doc.pages[0], 480); } catch (e) {}
+      if (thumb) {
+        const b64 = thumb.split(',')[1];
+        files.push({ name: 'thumbnails/thumb.png', data: b64ToU8(b64) });
+      }
+      return zipStore(files);
+    },
+    importPfg(bytes) {
+      const entries = unzipStore(bytes);
+      const manifestName = Object.keys(entries).find(n => n.toLowerCase() === 'manifest.json');
+      if (!manifestName) throw new Error('Not a .pfg file (missing manifest.json)');
+      const manifest = JSON.parse(u8ToStr(entries[manifestName]));
+      if (manifest.format !== 'penfig') throw new Error('Not a Penfig file');
+      const docName = Object.keys(entries).find(n => n.toLowerCase() === 'document.json');
+      if (!docName) throw new Error('.pfg is missing document.json');
+      const doc = JSON.parse(u8ToStr(entries[docName]));
+      if (!doc || !doc.pages) throw new Error('Invalid document.json');
+      if (!doc.id) doc.id = M.uid('doc-');
+      return doc;
     },
     deleteFile(id) {
       const f = M.store.get(id);
       if (!f) return;
-      if (!confirm('Delete “' + f.name + '”?')) return;
+      if (!confirm('Delete “' + f.name + '”? This cannot be undone.')) return;
       M.store.remove(id);
       this.render();
+      global.App.toast('Deleted ' + f.name, 2500);
     },
     duplicateFile(id) {
       const f = M.store.get(id);
@@ -294,13 +392,16 @@
       doc.createdAt = doc.updatedAt = Date.now();
       saveDoc(doc);
       this.render();
+      global.App.toast('Duplicated ' + f.name, 2500, 'success');
     },
     renameFile(id) {
       const f = M.store.get(id);
       if (!f) return;
       const name = prompt('Rename file', f.name);
       if (!name) return;
-      f.name = name; f.updatedAt = Date.now();
+      f.name = name.trim();
+      if (f.doc) f.doc.name = f.name;
+      f.updatedAt = Date.now();
       M.store.put(f);
       this.render();
     },
@@ -308,36 +409,186 @@
 
   function saveDoc(doc) {
     doc.updatedAt = Date.now();
-    const page = doc.pages[0];
     let thumb = '';
-    try { thumb = thumbDataURL(doc, page, 240); } catch (e) { }
-    M.store.put({ id: doc.id, name: doc.name, createdAt: doc.createdAt, updatedAt: doc.updatedAt, pageCount: doc.pages.length, thumb, doc });
+    try {
+      global.App.layoutDoc && global.App.layoutDoc(doc);
+      thumb = thumbDataURL(doc, doc.pages[0], 480);
+    } catch (e) { console.warn('thumb/rerender failed', e); }
+    const existing = M.store.get(doc.id);
+    const createdAt = (existing && existing.createdAt) || doc.createdAt || Date.now();
+    M.store.put({ id: doc.id, name: doc.name, createdAt, updatedAt: doc.updatedAt, pageCount: doc.pages.length, thumb, doc });
   }
 
   function thumbDataURL(doc, page, width) {
-    global.App.layoutDoc(doc, page);
+    try { global.App.layoutDoc(doc, page); } catch (e) {}
     const b = R.pageBounds(page);
+    if (!b || !isFinite(b.w) || b.w < 1 || b.h < 1) return '';
     const scale = Math.min(1, width / Math.max(1, b.w));
-    const c = R.renderRegion(page, doc, b, scale, { background: '#e9eaee', pad: Math.ceil(16 * scale) });
+    const c = R.renderRegion(page, doc, b, scale, { background: '#f0f1f5', pad: Math.ceil(16 * Math.max(scale, 0.25)) });
     return c.toDataURL('image/png');
   }
 
-  function downloadBytes(bytes, name) {
-    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+  function downloadBytes(bytes, name, mime) {
+    const blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = name;
+    document.body.appendChild(a);
     a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(a.href); }, 2000);
   }
 
-  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
   function ago(ts) {
     const d = Date.now() - ts;
     if (d < 60e3) return 'just now';
     if (d < 3600e3) return Math.floor(d / 60e3) + 'm ago';
     if (d < 86400e3) return Math.floor(d / 3600e3) + 'h ago';
-    return Math.floor(d / 86400e3) + 'd ago';
+    if (d < 30*86400e3) return Math.floor(d / 86400e3) + 'd ago';
+    return new Date(ts).toLocaleDateString();
+  }
+
+  // ----- minimal STORE-only ZIP (no compression, CRC32). Enough for .pfg. -----
+  function str2u8(s) { return new TextEncoder().encode(s); }
+  function u8ToStr(u) { return new TextDecoder().decode(u); }
+  function b64ToU8(b64) {
+    const bin = atob(b64); const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  // CRC32 (IEEE)
+  let CRC_TABLE;
+  function crc32(buf) {
+    if (!CRC_TABLE) {
+      CRC_TABLE = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        CRC_TABLE[n] = c >>> 0;
+      }
+    }
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function dosTime(d) {
+    return ((d.getHours() & 0x1F) << 11) | ((d.getMinutes() & 0x3F) << 5) | ((d.getSeconds() >> 1) & 0x1F);
+  }
+  function dosDate(d) {
+    return (((d.getFullYear() - 1980) & 0x7F) << 9) | (((d.getMonth() + 1) & 0x0F) << 5) | (d.getDate() & 0x1F);
+  }
+  function zipStore(files) {
+    // files: [{ name, data: Uint8Array }]
+    const parts = [];
+    const central = [];
+    let offset = 0;
+    const now = new Date();
+    const t = dosTime(now) & 0xFFFF;
+    const dd = dosDate(now) & 0xFFFF;
+    for (const f of files) {
+      const name = f.name.replace(/^\/+/, '');
+      const nameBytes = str2u8(name);
+      const data = f.data instanceof Uint8Array ? f.data : str2u8(String(f.data));
+      const crc = crc32(data);
+      const size = data.length;
+      // Local file header
+      const lh = new Uint8Array(30 + nameBytes.length);
+      const dv = new DataView(lh.buffer);
+      dv.setUint32(0, 0x04034b50, true);
+      dv.setUint16(4, 20, true);     // version
+      dv.setUint16(6, 0, true);      // flags
+      dv.setUint16(8, 0, true);      // method=store
+      dv.setUint16(10, t, true);
+      dv.setUint16(12, dd, true);
+      dv.setUint32(14, crc, true);
+      dv.setUint32(18, size, true);
+      dv.setUint32(22, size, true);
+      dv.setUint16(26, nameBytes.length, true);
+      dv.setUint16(28, 0, true);
+      lh.set(nameBytes, 30);
+      parts.push(lh, data);
+      // Central dir entry
+      const ch = new Uint8Array(46 + nameBytes.length);
+      const cv = new DataView(ch.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, t, true);
+      cv.setUint16(14, dd, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, size, true);
+      cv.setUint32(24, size, true);
+      cv.setUint16(28, nameBytes.length, true);
+      cv.setUint16(30, 0, true);
+      cv.setUint16(32, 0, true);
+      cv.setUint16(34, 0, true);
+      cv.setUint16(36, 0, true);
+      cv.setUint32(38, 0, true);
+      cv.setUint32(42, offset, true);
+      ch.set(nameBytes, 46);
+      central.push(ch);
+      offset += lh.length + data.length;
+    }
+    const centralStart = offset;
+    let centralSize = 0;
+    for (const c of central) { parts.push(c); centralSize += c.length; }
+    const end = new Uint8Array(22);
+    const ev = new DataView(end.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(4, 0, true);
+    ev.setUint16(6, 0, true);
+    ev.setUint16(8, files.length, true);
+    ev.setUint16(10, files.length, true);
+    ev.setUint32(12, centralSize, true);
+    ev.setUint32(16, centralStart, true);
+    ev.setUint16(20, 0, true);
+    parts.push(end);
+    // concat
+    let total = 0;
+    for (const p of parts) total += p.length;
+    const out = new Uint8Array(total);
+    let o = 0;
+    for (const p of parts) { out.set(p, o); o += p.length; }
+    return out;
+  }
+  function unzipStore(bytes) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const entries = {};
+    let i = 0;
+    function u16(p) { return dv.getUint16(p, true); }
+    function u32(p) { return dv.getUint32(p, true); }
+    while (i + 30 <= bytes.length) {
+      const sig = u32(i);
+      if (sig === 0x04034b50) {
+        const nameLen = u16(i + 26);
+        const extraLen = u16(i + 28);
+        const comp = u16(i + 8);
+        const csize = u32(i + 18);
+        const usize = u32(i + 22);
+        const name = new TextDecoder().decode(bytes.subarray(i + 30, i + 30 + nameLen));
+        const dataStart = i + 30 + nameLen + extraLen;
+        const data = bytes.subarray(dataStart, dataStart + csize);
+        if (comp === 0 && csize === usize) {
+          entries[name] = data;
+        } else if (comp === 0) {
+          entries[name] = data;
+        } else {
+          console.warn('pfg: unsupported compression method', comp, 'for', name);
+        }
+        i = dataStart + csize;
+      } else if (sig === 0x02014b50) {
+        const nameLen = u16(i + 28);
+        const extraLen = u16(i + 30);
+        const commentLen = u16(i + 32);
+        i += 46 + nameLen + extraLen + commentLen;
+      } else if (sig === 0x06054b50) {
+        break;
+      } else {
+        break;
+      }
+    }
+    return entries;
   }
 
   global.Dash = { D, makeStarterDoc, saveDoc, thumbDataURL, downloadBytes, esc, ago };

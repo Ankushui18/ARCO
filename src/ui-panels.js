@@ -6,6 +6,8 @@
   const T = global.Tokens;
   const App = global.App;
   const esc = global.Dash.esc;
+  const I = global.Icons;
+  const Ico = I.svg;
 
   const P = {
 
@@ -15,29 +17,41 @@
       if (!el || !App.doc) return;
       const page = App.page;
       const rows = [];
-      const icon = { frame: '▭', rect: '■', ellipse: '●', line: '—', text: 'T', vector: '◈', instance: '⧉' };
+      const layerIconMap = {
+        frame: 'frame', rect: 'rect', ellipse: 'ellipse', line: 'line',
+        text: 'text', vector: 'pen', instance: 'instance', group: 'group',
+        section: 'section', arrow: 'arrow', polygon: 'polygon', star: 'star', triangle: 'triangle',
+      };
       const render = (parentId, depth) => {
         const ids = parentId ? page.nodes[parentId].children : page.tops;
         for (let i = ids.length - 1; i >= 0; i--) {
           const n = page.nodes[ids[i]];
           if (!n) continue;
           const hasKids = n.children.length > 0;
+          const collapsed = P._collapsed?.[n.id];
           const sel = App.sel.includes(n.id) ? ' sel' : '';
+          const typeIco = layerIconMap[n.type] || 'rect';
+          const comp = n.isComponent || (App.doc.components || {})[n.id];
+          const visIco = n.visible ? 'eye' : 'eye_off';
           rows.push(`
-            <div class="ly-row${sel}" data-id="${n.id}" style="padding-left:${8 + depth * 14}px">
-              <span class="ly-caret" data-caret="${n.id}">${hasKids ? '▾' : ''}</span>
-              <span class="ly-ico">${icon[n.type] || '?'}</span>
-              <span class="ly-name" data-rename="${n.id}">${n.isComponent || (App.doc.components || {})[n.id] ? '<b class="ly-comp">◆</b> ' : ''}${esc(n.name)}${n.al ? ' <i class="ly-al">AL</i>' : ''}${n.mask ? ' <i class="ly-al">MASK</i>' : ''}</span>
+            <div class="ly-row${sel}" data-id="${n.id}" style="padding-left:${6 + depth * 12}px">
+              <span class="ly-caret" data-caret="${n.id}" title="${hasKids ? (collapsed?'Expand':'Collapse'):''}">${hasKids ? Ico(collapsed?'chevron_r':'chevron_d',{size:10}) : ''}</span>
+              <span class="ly-ico">${Ico(comp?'component':typeIco,{size:13})}</span>
+              <span class="ly-name" data-rename="${n.id}">${esc(n.name)}${n.al ? ' <i class="ly-al">Auto</i>' : ''}${n.mask ? ' <i class="ly-mask">Mask</i>' : ''}</span>
               <span class="ly-tools">
-                <button class="ly-eye" data-eye="${n.id}" title="Visibility">${n.visible ? '👁' : '─'}</button>
-                <button class="ly-lock" data-lock="${n.id}" title="Lock">${n.locked ? '🔒' : ''}</button>
+                <button class="ly-eye" data-eye="${n.id}" title="${n.visible?'Hide':'Show'}">${Ico(visIco,{size:13})}</button>
+                <button class="ly-lock${n.locked?' on':''}" data-lock="${n.id}" title="${n.locked?'Unlock':'Lock'}">${Ico(n.locked?'lock':'unlock',{size:12})}</button>
               </span>
             </div>`);
-          if (hasKids && !P._collapsed?.[n.id]) render(n.id, depth + 1);
+          if (hasKids && !collapsed) render(n.id, depth + 1);
         }
       };
       render(null, 0);
-      el.innerHTML = rows.join('') || '<div class="ph">No layers yet.<br><b>F</b> frame · <b>R</b> rect · <b>O</b> ellipse · <b>T</b> text<br><b>P</b> pen · <b>N</b> pencil · <b>A</b> arrow · <b>S</b> section</div>';
+      el.innerHTML = rows.join('') || `<div class="ph big">
+        <div class="ph-icon">${Ico('draft',{size:28})}</div>
+        <h3>No layers yet</h3>
+        <p class="keys"><span><b>V</b> Select</span><span><b>F</b> Frame</span><span><b>R</b> Rect</span><span><b>O</b> Ellipse</span><span><b>T</b> Text</span><span><b>P</b> Pen</span></p>
+      </div>`;
       el.querySelectorAll('.ly-row').forEach(row => {
         const id = row.dataset.id;
         row.addEventListener('click', (e) => {
@@ -84,21 +98,37 @@
       const doc = App.doc;
       el.innerHTML = doc.pages.map((p, i) => `
         <div class="pg-row${i === App.pageIndex ? ' sel' : ''}" data-i="${i}">
-          <span>📄</span><span data-pgname="${i}">${esc(p.name)}</span>
+          ${Ico('pages',{size:13})}<span data-pgname="${i}">${esc(p.name)}</span>
+          <span style="flex:1"></span>
+          ${i === App.pageIndex ? `<button class="mini" data-pgdel="${i}" title="Delete page">${Ico('trash',{size:11})}</button>` : ''}
         </div>`).join('') + `
-        <div class="pg-add"><button id="pg-new">+ Add page</button></div>`;
-      el.querySelectorAll('.pg-row').forEach(r => r.addEventListener('click', () => {
+        <div class="pg-add"><button id="pg-new" class="mini" style="width:100%;justify-content:center">${Ico('plus',{size:12})} Add page</button></div>`;
+      el.querySelectorAll('.pg-row').forEach(r => r.addEventListener('click', (e) => {
+        if (e.target.closest('[data-pgdel]')) return;
         App.pageIndex = +r.dataset.i;
         App.sel = [];
+        App.renderPagename && App.renderPagename();
+        P.renderPages(); P.refreshLayers(); P.refreshInspector(); App.markDirty();
+      }));
+      el.querySelectorAll('[data-pgdel]').forEach(b => b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const i = +b.closest('.pg-row').dataset.i;
+        if (doc.pages.length <= 1) { App.toast('You need at least one page'); return; }
+        if (!confirm('Delete page “' + doc.pages[i].name + '”?')) return;
+        doc.pages.splice(i, 1);
+        if (App.pageIndex >= doc.pages.length) App.pageIndex = doc.pages.length - 1;
+        App.renderPagename && App.renderPagename();
         P.renderPages(); P.refreshLayers(); P.refreshInspector(); App.markDirty();
       }));
       el.querySelectorAll('[data-pgname]').forEach(s => s.addEventListener('dblclick', () => {
         const i = +s.dataset.pgname;
         const name = prompt('Page name', doc.pages[i].name);
-        if (name) { doc.pages[i].name = name; P.renderPages(); App.markDirty(); }
+        if (name) { doc.pages[i].name = name.trim(); P.renderPages(); App.renderPagename && App.renderPagename(); App.markDirty(); }
       }));
       el.querySelector('#pg-new').addEventListener('click', () => {
         M.addPage(doc, 'Page ' + (doc.pages.length + 1));
+        App.pageIndex = doc.pages.length - 1;
+        App.renderPagename && App.renderPagename();
         P.renderPages(); P.refreshInspector(); App.markDirty();
       });
     },
@@ -119,12 +149,13 @@
       if (!nodes.length) {
         el.innerHTML = `
           <div class="ph big">
+            <div class="ph-icon">${Ico('move',{size:24})}</div>
             <h3>Nothing selected</h3>
             <p>Pick a tool on the left, or click a layer.</p>
             <p class="keys">
-              <span><b>F</b> frame</span><span><b>R</b> rect</span><span><b>O</b> ellipse</span><span><b>T</b> text</span><span><b>P</b> pen</span><span><b>N</b> pencil</span><br>
-              <span><b>A</b> arrow</span><span><b>S</b> section</span><span><b>D</b> dev mode</span><span><b>⌘/</b> mask / commands</span><br>
-              <span><b>⌘K</b> versions</span><span><b>⌘E</b> export</span><span><b>⇧K</b> present</span><span><b>?</b> shortcuts</span>
+              <span><b>V</b> Move</span><span><b>F</b> Frame</span><span><b>R</b> Rect</span><span><b>O</b> Ellipse</span>
+              <span><b>T</b> Text</span><span><b>P</b> Pen</span><span><b>N</b> Pencil</span><span><b>A</b> Arrow</span>
+              <span><b>H</b> Hand</span><span><b>⌘/</b> Commands</span><span><b>⌘E</b> Export</span><span><b>?</b> Shortcuts</span>
             </p>
           </div>`;
         return;
@@ -180,13 +211,15 @@
       // ---- z-order
       parts.push(`
         <section class="ins-sec">
+          <div class="ins-head"><span>Arrange</span></div>
           <div class="ins-btnrow">
-            <button data-act="z-front" title="Bring to front">⇪</button>
-            <button data-act="z-fwd" title="Bring forward">↑</button>
-            <button data-act="z-bwd" title="Send backward">↓</button>
-            <button data-act="z-back" title="Send to back">⇩</button>
-            <button data-act="dup" title="Duplicate (⌘D)">⧉</button>
-            <button data-act="del" title="Delete (⌫)">🗑</button>
+            <button data-act="z-front" title="Bring to front">${Ico('front',{size:14})}</button>
+            <button data-act="z-fwd" title="Bring forward">${Ico('forward',{size:14})}</button>
+            <button data-act="z-bwd" title="Send backward">${Ico('backward',{size:14})}</button>
+            <button data-act="z-back" title="Send to back">${Ico('back',{size:14})}</button>
+            <span class="spacer" style="flex:1"></span>
+            <button data-act="dup" title="Duplicate (⌘D)">${Ico('duplicate',{size:14})}</button>
+            <button data-act="del" title="Delete (⌫)" style="color:#ff8a7a">${Ico('trash',{size:14})}</button>
           </div>
         </section>`);
 
@@ -204,7 +237,7 @@
             <input class="f-hex" value="${M.normHex(c)}" spellcheck="false" data-fi="${i}">
             <input class="f-op" type="range" min="0" max="100" value="${Math.round((f.opacity == null ? 1 : f.opacity) * 100)}" data-fi="${i}">
             ${tokenSelect('color', f.token, 'f-token')}
-            <button class="f-del" data-fi="${i}" title="Remove">✕</button>
+            <button class="f-del" data-fi="${i}" title="Remove">${Ico('close',{size:10})}</button>
           </div>`;
         }
         if (f.type === 'linear') {
@@ -212,25 +245,25 @@
           <div class="fill-row" data-fi="${i}">
             <span class="f-grad-swatch" style="background:linear-gradient(90deg, ${(f.stops || []).map(s => s.color + ' ' + Math.round((s.pos ?? 0) * 100) + '%').join(',')})"></span>
             <span class="f-type">Linear gradient</span>
-            <button class="f-del" data-fi="${i}" title="Remove">✕</button>
+            <button class="f-del" data-fi="${i}" title="Remove">${Ico('close',{size:10})}</button>
           </div>
           <div class="grad-edit" data-fi="${i}">
             ${(f.stops || []).map((s, si) => `
               <div class="grad-stop">
                 <input type="color" data-gs="${si}" value="${M.normHex(s.color)}">
                 <input type="number" min="0" max="100" value="${Math.round((s.pos ?? 0) * 100)}" data-gp="${si}"><span>%</span>
-                <button data-gdel="${si}">✕</button>
+                <button data-gdel="${si}">${Ico('close',{size:10})}</button>
               </div>`).join('')}
             <button class="mini" data-gadd>+ stop</button>
           </div>`;
         }
-        return `<div class="fill-row" data-fi="${i}"><span class="f-type">Image</span><button class="f-del" data-fi="${i}">✕</button></div>`;
+        return `<div class="fill-row" data-fi="${i}"><span class="f-type">Image</span><button class="f-del" data-fi="${i}">${Ico('close',{size:10})}</button></div>`;
       }).join('');
       return `
         <section class="ins-sec">
           <div class="ins-head"><span>Fills</span><span class="ins-head-btns">
-            <button class="mini" data-act="add-solid" title="Solid fill">+ ▦</button>
-            <button class="mini" data-act="add-grad" title="Linear gradient">+ ◫</button>
+            <button class="mini" data-act="add-solid" title="Solid fill">+ ${Ico('fill_swatch',{size:12})}</button>
+            <button class="mini" data-act="add-grad" title="Linear gradient">+ ${Ico('shadow',{size:12})}</button>
           </span></div>
           ${rows || '<div class="ph sm">No fills</div>'}
         </section>`;
@@ -286,7 +319,7 @@
           <input type="number" value="${Math.round(s.y || 0)}" data-sh="${i}" data-f="y" title="Y">
           <input type="number" value="${Math.round(s.blur || 0)}" data-sh="${i}" data-f="blur" title="Blur">
           <input type="number" value="${Math.round(s.spread || 0)}" data-sh="${i}" data-f="spread" title="Spread">
-          <button data-shdel="${i}">✕</button>
+          <button data-shdel="${i}">${Ico('close',{size:10})}</button>
         </div>`).join('');
       return `
         <section class="ins-sec">
@@ -301,8 +334,8 @@
           <section class="ins-sec al-sec">
             <div class="ins-head"><span>Auto layout</span></div>
             <div class="ins-btnrow">
-              <button class="al-add" data-al="h" title="Add auto layout (horizontal)">→ Add →</button>
-              <button class="al-add" data-al="v" title="Add auto layout (vertical)">↓ Add ↓</button>
+              <button class="al-add" data-al="h" title="Add auto layout (horizontal)">${Ico('arrow',{size:12})} Horizontal</button>
+              <button class="al-add" data-al="v" title="Add auto layout (vertical)">${Ico('chevron_d',{size:12})} Vertical</button>
             </div>
             <div class="ph sm">Figma-style layout: padding, gap, wrap, hug / fill / fixed sizing. Implemented with a custom layout engine — no CSS flexbox.</div>
           </section>`;
@@ -333,9 +366,9 @@
         <section class="ins-sec al-sec">
           <div class="ins-head"><span>Auto layout</span><button class="mini" data-act="al-remove">Remove</button></div>
           <div class="ins-btnrow">
-            <button class="al-dir ${al.dir === 'h' ? 'on' : ''}" data-aldir="h" title="Horizontal">→</button>
-            <button class="al-dir ${al.dir === 'v' ? 'on' : ''}" data-aldir="v" title="Vertical">↓</button>
-            <button class="al-dir ${al.wrap ? 'on' : ''}" data-act="al-wrap" title="Wrap">⇄ wrap</button>
+            <button class="al-dir ${al.dir === 'h' ? 'on' : ''}" data-aldir="h" title="Horizontal">&#8594;</button>
+            <button class="al-dir ${al.dir === 'v' ? 'on' : ''}" data-aldir="v" title="Vertical">&#8595;</button>
+            <button class="al-dir ${al.wrap ? 'on' : ''}" data-act="al-wrap" title="Wrap" style="width:auto;padding:0 8px;gap:4px">${Ico('wrap_h',{size:12})} Wrap</button>
           </div>
           <div class="al-alignwrap">${alignGrid}${more}</div>
           <div class="ins-grid g2">
@@ -380,9 +413,10 @@
       const fonts = ['Inter', 'Helvetica', 'Arial', 'Roboto', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'Garamond', 'Futura', 'Impact'];
       return `
         <section class="ins-sec">
-          <div class="ins-head"><span>Text</span><button class="mini" data-act="edit-text" title="Edit text">✎</button></div>
+          <div class="ins-head"><span>Text</span><button class="mini" data-act="edit-text" title="Edit text">${Ico('edit',{size:11})}</button></div>
           <div class="ins-btnrow">
-            ${[['auto', '⇲', 'Auto width and height (hug — Figma default for new text)'], ['auto-w', '⇆', 'Auto width (fixed height)'], ['auto-h', '⇵', 'Auto height (fixed width)'], ['fixed', '▣', 'Fixed size']].map(([m, g, tip]) => `<button class="al-dir ${(t.resize || 'fixed') === m ? 'on' : ''}" data-tresize="${m}" title="${tip}">${g}</button>`).join('')}
+            ${[['auto','zoomfit','Auto width and height (hug)'],['auto-w','flip_h','Auto width (fixed height)'],['auto-h','flip_v','Auto height (fixed width)'],['fixed','frame_sel','Fixed size']]
+              .map(([m,ic,tip]) => `<button class="al-dir ${(t.resize||'fixed')===m?'on':''}" data-tresize="${m}" title="${tip}">${Ico(ic,{size:12})}</button>`).join('')}
             <span class="ins-spacer"></span><span style="font-size:9px;opacity:.55">Auto-resize</span>
           </div>
           <div class="ins-grid g2"><label>Font</label>
@@ -399,9 +433,9 @@
             <label class="chk"><input type="checkbox" data-act="t-italic" ${t.italic ? 'checked' : ''}> Italic</label>
           </div>
           <div class="ins-btnrow">
-            ${['left', 'center', 'right'].map(a => `<button class="al-dir ${t.align === a ? 'on' : ''}" data-talign="${a}">${{ left: '⯇', center: '≡', right: '⯈' }[a]}</button>`).join('')}
+            ${[['left','align_l'],['center','align_hc'],['right','align_r']].map(([a,ic]) => `<button class="al-dir ${t.align===a?'on':''}" data-talign="${a}" title="Align ${a}">${Ico(ic,{size:12})}</button>`).join('')}
             <span class="ins-spacer"></span>
-            ${['top', 'middle', 'bottom'].map(a => `<button class="al-dir ${t.valign === a ? 'on' : ''}" data-tvalign="${a}">${{ top: '↑', middle: '⇕', bottom: '↓' }[a]}</button>`).join('')}
+            ${[['top','align_t'],['middle','align_vc'],['bottom','align_b']].map(([a,ic]) => `<button class="al-dir ${t.valign===a?'on':''}" data-tvalign="${a}" title="Align ${a}">${Ico(ic,{size:12})}</button>`).join('')}
           </div>
         </section>`;
     },
@@ -421,13 +455,13 @@
         const libName = n.libraryFileId ? (global.Libraries.list(doc).find(l => l.fileId === n.libraryFileId) || {}).name : null;
         return `<section class="ins-sec">
           <div class="ins-sec-title">Instance</div>
-          <div class="ins-row"><label>Component</label><span class="ins-val">${esc(set.name)}${libName ? ` <span class="alias-chip" title="From library file">📚 ${esc(libName)}</span>` : ''}</span></div>
+          <div class="ins-row"><label>Component</label><span class="ins-val">${esc(set.name)}${libName ? ` <span class="alias-chip" title="From library file">${Ico('assets',{size:11})} ${esc(libName)}</span>` : ''}</span></div>
           ${!n.libraryFileId ? `<div class="ins-row"><label>Variant</label>
             <select data-act="inst-variant">
               ${variants.map(v => `<option value="${esc(v)}" ${n.variant === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
             </select>
           </div>` : ''}
-          <div class="ins-btnrow"><button data-act="inst-update" title="${n.libraryFileId ? 'Re-clone from the library file' : 'Re-clone from component (keeps text overrides)'}">↻ Update ${n.libraryFileId ? 'from library' : 'instance'}</button></div>
+          <div class="ins-btnrow"><button data-act="inst-update" title="${n.libraryFileId ? 'Re-clone from the library file' : 'Re-clone from component (keeps text overrides)'}">${Ico('redo',{size:12})} Update ${n.libraryFileId ? 'from library' : 'instance'}</button></div>
         </section>`;
       }
       if (n.type === 'frame' && set) {
@@ -437,13 +471,13 @@
           <div class="ins-row"><label>Main variant</label><span class="ins-val">${esc(n.name)}</span></div>
           ${variants.map(v => `<div class="ins-row"><label>&nbsp;</label><span class="ins-val">${esc(v)}</span></div>`).join('')}
           <div class="ins-row"><label>Add variant</label><input type="text" data-act="variant-name" placeholder="e.g. Disabled" style="width:110px"><button class="ed-btn sm" data-act="variant-add">+</button></div>
-          <div class="ins-btnrow"><button data-act="inst-count" title="How many instances exist">⧉ ${C.instancesOf(doc, n.id).length} instance(s)</button></div>
+          <div class="ins-btnrow"><button data-act="inst-count" title="How many instances exist">${Ico('instance',{size:12})} ${C.instancesOf(doc, n.id).length} instance(s)</button></div>
         </section>`;
       }
       if (n.type === 'frame') {
         return `<section class="ins-sec">
           <div class="ins-sec-title">Component</div>
-          <div class="ins-btnrow"><button data-act="make-component" title="⌥C">◆ Make component</button></div>
+          <div class="ins-btnrow"><button data-act="make-component" title="⌥C">${Ico('component',{size:11})} Make component</button></div>
         </section>`;
       }
       return '';
@@ -473,7 +507,7 @@
         </section>`;
       }
       // component: manage the prop definitions
-      const rows = props.map(p => `\n          <div class="ins-row"><label>${esc(p.name)}</label><span class="ins-val">${p.type}</span><button class="ed-btn sm" data-act="prop-del" data-name="${esc(p.name)}">✕</button></div>`).join('');
+      const rows = props.map(p => `\n          <div class="ins-row"><label>${esc(p.name)}</label><span class="ins-val">${p.type}</span><button class="ed-btn sm" data-act="prop-del" data-name="${esc(p.name)}">${Ico('close',{size:10})}</button></div>`).join('');
       return `<section class="ins-sec">
         <div class="ins-sec-title">Properties</div>
         ${rows || '<p class="ph" style="padding:4px">No props yet.</p>'}
@@ -501,7 +535,7 @@
           <span class="ins-dim">H / V</span>
           ${parent.al ? '<span class="ins-dim" colspan="2">managed by auto layout</span>' : sel('h', c.h) + sel('v', c.v)}
         </div>
-        ${isContainer ? `<div class="ins-btnrow"><button data-act="resize-fit" title="Shrink-wrap this frame to its content">⤡ Resize to fit</button></div>` : ''}
+        ${isContainer ? `<div class="ins-btnrow"><button data-act="resize-fit" title="Shrink-wrap this frame to its content">${Ico('zoomfit',{size:12})} Resize to fit</button></div>` : ''}
       </section>`;
     },
 
@@ -516,14 +550,14 @@
         <div class="ins-inter">
           <div class="ins-grid g2" style="grid-template-columns:64px 1fr">
             <span class="ins-dim">On click</span>
-            <select data-act="it-kind" data-i="${i}"><option value="node" ${it.kind === 'node' ? 'selected' : ''}>Frame…</option><option value="page" ${it.kind === 'page' ? 'selected' : ''}>Page…</option></select>
+            <select data-act="it-kind" data-i="${i}"><option value="node" ${it.kind === 'node' ? 'selected' : ''}>Frame...</option><option value="page" ${it.kind === 'page' ? 'selected' : ''}>Page...</option></select>
           </div>
           <div class="ins-grid g2" style="grid-template-columns:64px 1fr 1fr">
             <span class="ins-dim">Navigate</span>
             <select data-act="it-to" data-i="${i}">${(it.kind === 'page' ? opts('page') : opts('node')).replace(`<option value="${it.to}"`, `<option value="${it.to}" selected`)}</select>
             <select data-act="it-anim" data-i="${i}">${['none', 'fade', 'slide', 'overlay', 'scroll'].map(a => `<option value="${a}" ${it.anim === a ? 'selected' : ''}>${a}</option>`).join('')}</select>
           </div>
-          <div class="ins-btnrow"><button data-act="it-del" data-i="${i}">✕</button></div>
+          <div class="ins-btnrow"><button data-act="it-del" data-i="${i}">${Ico('close',{size:10})}</button></div>
         </div>`).join('');
       return `<section class="ins-sec">
         <div class="ins-sec-title">Prototype</div>
@@ -568,11 +602,11 @@
       ].map(([k, v]) => `<div class="spec-row"><span>${esc(k)}</span><b>${esc(String(v))}</b></div>`).join('');
       const E2 = global.Eco.Annotations;
       const anns = E2.listFor(doc, n.id);
-      const annRows = anns.map(a => `<div class="spec-row"><span>${esc(a.author)} · ${new Date(a.at).toLocaleTimeString()}</span><b>${esc(a.text)}</b></div><button class="ed-btn sm" data-act="ann-del" data-id="${a.id}" style="margin:-2px 0 4px 8px">✕</button>`).join('');
+      const annRows = anns.map(a => `<div class="spec-row"><span>${esc(a.author)} · ${new Date(a.at).toLocaleTimeString()}</span><b>${esc(a.text)}</b></div><button class="ed-btn sm" data-act="ann-del" data-id="${a.id}" style="margin:-2px 0 4px 8px">${Ico('close',{size:10})}</button>`).join('');
       return `
         <section class="ins-sec"><div class="ins-sec-title">Inspect</div>${spec}</section>
         <section class="ins-sec"><div class="ins-sec-title">Annotations</div>${annRows || '<p class="ph" style="padding:4px">No notes on this node.</p>'}
-          <div class="ins-row" style="margin-top:6px"><input type="text" data-act="ann-text" placeholder="Add a dev note…" style="width:150px"><button class="ed-btn sm" data-act="ann-add">+</button></div>
+          <div class="ins-row" style="margin-top:6px"><input type="text" data-act="ann-text" placeholder="Add a dev note..." style="width:150px"><button class="ed-btn sm" data-act="ann-add">+</button></div>
         </section>
         <section class="ins-sec"><div class="ins-sec-title">CSS</div><pre class="code-block">${esc(css)}</pre><button class="ed-btn sm" data-act="copy-css">Copy CSS</button></section>
         <section class="ins-sec"><div class="ins-sec-title">HTML</div><pre class="code-block">${esc(html)}</pre><button class="ed-btn sm" data-act="copy-html">Copy HTML</button></section>`;
@@ -592,7 +626,7 @@
         ${list.length ? list.map(v => `
           <div class="ver-row">
             <div class="ver-meta"><b>${esc(v.name)}</b><span>${new Date(v.at).toLocaleString()}</span></div>
-            <div class="ver-actions"><button data-v="restore" data-id="${v.id}">Restore</button><button data-v="del" data-id="${v.id}">🗑</button></div>
+            <div class="ver-actions"><button data-v="restore" data-id="${v.id}">Restore</button><button data-v="del" data-id="${v.id}">${Ico('trash',{size:12})}</button></div>
           </div>`).join('') : '<div class="ph" style="padding:8px">No versions yet — "Add now" snapshots the whole file.</div>'}`;
       if (x == null) { const r = document.getElementById('ed-versions').getBoundingClientRect(); x = r.right; y = r.bottom + 4; }
       el.style.left = Math.min(x, innerWidth - 340) + 'px';
@@ -635,24 +669,24 @@
       wrap.className = 'pf-modal';
       const renderList = () => {
         const custom = Pl.custom.all();
-        const acts = (p) => (p.ui ? `<button data-open="${p.id}" title="Open plugin UI panel">🖥 Open</button>` : '') +
-          (p.code ? `<button data-run="${p.id}" title="Run (headless)">▶ Run</button>` : '');
-        const actsC = (p) => (p.ui ? `<button data-open-c="${p.id}" title="Open plugin UI panel">🖥</button>` : '') +
-          (p.code ? `<button data-run-c="${p.id}" title="Run">▶</button>` : '');
+        const acts = (p) => (p.ui ? `<button data-open="${p.id}" title="Open plugin UI panel">${Ico('plugin',{size:12})} Open</button>` : '') +
+          (p.code ? `<button data-run="${p.id}" title="Run (headless)">${Ico('play',{size:11})} Run</button>` : '');
+        const actsC = (p) => (p.ui ? `<button data-open-c="${p.id}" title="Open plugin UI panel">${Ico('plugin',{size:12})}</button>` : '') +
+          (p.code ? `<button data-run-c="${p.id}" title="Run">${Ico('play',{size:11})}</button>` : '');
         wrap.querySelector('.pl-list').innerHTML =
           Pl.builtins.map(p => `<div class="pl-row"><div class="pl-meta"><b>${esc(p.name)}</b><span>${esc(p.desc)}</span></div><div class="pl-acts">${acts(p)}</div></div>`).join('') +
           (custom.length ? '<div class="pf-title" style="margin-top:8px">Custom</div>' : '') +
-          custom.map(p => `<div class="pl-row"><div class="pl-meta"><b>${esc(p.name)}</b></div><div class="pl-acts">${actsC(p)}<button data-del-c="${p.id}">🗑</button></div></div>`).join('') || '';
+          custom.map(p => `<div class="pl-row"><div class="pl-meta"><b>${esc(p.name)}</b></div><div class="pl-acts">${actsC(p)}<button data-del-c="${p.id}">${Ico('trash',{size:12})}</button></div></div>`).join('') || '';
       };
       wrap.innerHTML = `
         <div class="pf-modal-card">
-          <div class="pf-modal-head"><b>Plugins</b><button class="ed-iconbtn pf-modal-x">✕</button></div>
-          <div class="pl-trust"><b>▶ Run</b> headless plugins execute in a sandboxed Web Worker (async <code>penfig</code> API, whitelisted RPC only) — where Workers are unavailable they fall back to trusted local code, as labeled in the output. <b>🖥 Open</b> UI plugins run sandboxed (iframe, scripts-only) and may only call the same whitelisted RPC surface.</div>
+          <div class="pf-modal-head"><b>Plugins</b><button class="ed-iconbtn pf-modal-x">${Ico('close',{size:10})}</button></div>
+          <div class="pl-trust"><b>${Ico('play',{size:11})} Run</b> headless plugins execute in a sandboxed Web Worker (async <code>penfig</code> API, whitelisted RPC only) — where Workers are unavailable they fall back to trusted local code, as labeled in the output. <b>${Ico('plugin',{size:12})} Open</b> UI plugins run sandboxed (iframe, scripts-only) and may only call the same whitelisted RPC surface.</div>
           <div class="pl-list"></div>
           <div class="pf-title" style="margin-top:10px">New custom plugin</div>
           <div class="pl-new"><input type="text" id="pl-name" placeholder="Name"><textarea id="pl-code" rows="6" placeholder='Headless code (optional).\ne.g. penfig.toast("hi"); penfig.refresh(); return "done";'></textarea>
-          <textarea id="pl-ui" rows="6" placeholder='UI code (optional) — runs in a sandboxed panel; use await penfig.call("doc")…\ne.g. const doc = await penfig.call("doc"); document.body.textContent = doc.name;'></textarea>
-          <div class="pl-acts"><button data-pl="save">＋ Add to list</button></div></div>
+          <textarea id="pl-ui" rows="6" placeholder='UI code (optional) — runs in a sandboxed panel; use await penfig.call("doc")...\ne.g. const doc = await penfig.call("doc"); document.body.textContent = doc.name;'></textarea>
+          <div class="pl-acts"><button data-pl="save">+ Add to list</button></div></div>
           <pre class="pl-out" style="display:none"></pre>
         </div>`;
       document.body.appendChild(wrap);
@@ -697,9 +731,10 @@
     async _runPlugin(code, wrap) {
       const out = wrap.querySelector('.pl-out');
       out.style.display = '';
-      out.textContent = '… running in ' + (global.Plugins.workerAvailable() ? 'sandboxed worker' : 'local trusted mode') + '';
+      out.textContent = '... running in ' + (global.Plugins.workerAvailable() ? 'sandboxed worker' : 'local trusted mode');
       const res = await global.Plugins.run(code, App);
-      out.textContent = (res.ok ? '✔ ' + res.result : '✖ ' + res.error) + (res.logs.length ? '\n' + res.logs.join('\n') : '');
+      const mk = res.ok ? 'OK: ' : 'Error: ';
+      out.textContent = mk + res.result + (res.ok ? '' : ' — ' + res.error) + (res.logs.length ? '\n' + res.logs.join('\n') : '');
       if (res.ok && res.result !== 'Done.') App.toast(res.result);
     },
     _openPluginUI(p, wrap) {
@@ -714,7 +749,7 @@
           if (!document.body.contains(wrap)) { obs.disconnect(); h.close(); }
         });
         obs.observe(document.body, { childList: true });
-      } catch (e) { /* no observer support — the panel has its own ✕ */ }
+      } catch (e) { /* no observer support — the panel has its own ${Ico('close',{size:10})} */ }
     },
 
     // ============================================================ assets panel
@@ -729,26 +764,26 @@
         const comps = L.componentsOf(doc, lib.fileId);
         return `
         <div class="pf-title" style="display:flex;justify-content:space-between;align-items:center">
-          <span>📚 ${esc(lib.name)}</span>
+          <span>${Ico('assets',{size:11})} ${esc(lib.name)}</span>
           <span>
-            <button class="mini" data-llib-update="${lib.fileId}" title="Re-clone all instances from the library file">↻</button>
-            <button class="mini" data-llib-unlink="${lib.fileId}" title="Unlink library">🗑</button>
+            <button class="mini" data-llib-update="${lib.fileId}" title="Re-clone all instances from the library file">${Ico('redo',{size:12})}</button>
+            <button class="mini" data-llib-unlink="${lib.fileId}" title="Unlink library">${Ico('trash',{size:12})}</button>
           </span>
         </div>
         ${comps.length ? comps.map(c => `
           <div class="asset-row" data-llib="${lib.fileId}" data-lcomp="${c.id}" title="Double-click to insert instance">
-            <span class="asset-ico" style="opacity:.75">◆</span>
+            <span class="asset-ico" style="opacity:.75">${Ico('component',{size:11})}</span>
             <div class="asset-meta"><b>${esc(c.name)}</b><span>library · ${Object.keys(c.variants).length} variant(s)</span></div>
           </div>`).join('') : '<div class="ph" style="padding:2px 10px">No components in this file.</div>'}`;
       }).join('');
       el.innerHTML = `
         ${list.length ? `<div class="pf-title">This file</div>` + list.map(c => `
           <div class="asset-row" data-comp="${c.id}" title="Double-click to insert instance">
-            <span class="asset-ico">◆</span>
+            <span class="asset-ico">${Ico('component',{size:11})}</span>
             <div class="asset-meta"><b>${esc(c.name)}</b><span>${Object.keys(c.variants).length} variant(s) · ${C.instancesOf(doc, c.id).length} instance(s)</span></div>
-          </div>`).join('') : '<div class="ph">No components yet.<br>Select a frame → <b>Make component</b> (or ⌥C).</div>'}
+          </div>`).join('') : '<div class="ph">No components yet.<br>Select a frame &#8594; <b>Make component</b> (or ⌥C).</div>'}
         ${libRows}
-        <div class="ins-btnrow" style="padding:8px"><button class="ed-btn sm" data-llib-link>＋ Link a file as library…</button></div>`;
+        <div class="ins-btnrow" style="padding:8px"><button class="ed-btn sm" data-llib-link>+ Link a file as library...</button></div>`;
       // local component rows
       el.querySelectorAll('[data-comp]').forEach(r => r.addEventListener('dblclick', () => {
         App.history.begin(doc);
@@ -805,25 +840,25 @@
         <div class="asset-row" data-tstyle="${st.id}" title="Click to apply to selection">
           <span class="asset-ico" style="font-size:15px">T</span>
           <div class="asset-meta"><b>${esc(st.name)}</b><span>${esc(st.font)} ${st.size}px · ${st.weight}${st.italic ? ' · italic' : ''}</span></div>
-          <button class="mini" data-trename="${st.id}" title="Rename">✎</button>
-          <button class="mini" data-tdel="${st.id}" title="Delete">✕</button>
+          <button class="mini" data-trename="${st.id}" title="Rename">${Ico('edit',{size:11})}</button>
+          <button class="mini" data-tdel="${st.id}" title="Delete">${Ico('close',{size:10})}</button>
         </div>`).join('');
       const paintRows = S.paintList(doc).map(st => `
         <div class="asset-row" data-pstyle="${st.id}" title="Click to apply to selection">
           <span class="asset-ico" style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${st.fills && st.fills[0] && st.fills[0].type === 'solid' ? st.fills[0].color : 'repeating-linear-gradient(45deg,#888 0 4px,#555 4px 8px)'}"></span>
           <div class="asset-meta"><b>${esc(st.name)}</b><span>${(st.fills || []).map(f => f.type === 'solid' ? f.color : f.type).join(', ') || '—'}</span></div>
-          <button class="mini" data-prename="${st.id}" title="Rename">✎</button>
-          <button class="mini" data-pdel="${st.id}" title="Delete">✕</button>
+          <button class="mini" data-prename="${st.id}" title="Rename">${Ico('edit',{size:11})}</button>
+          <button class="mini" data-pdel="${st.id}" title="Delete">${Ico('close',{size:10})}</button>
         </div>`).join('');
 
       el.innerHTML = `
         <div class="ph" style="padding:6px 8px 2px">Click a style to apply it to the selection.</div>
         <div class="pf-title" style="padding:4px 8px">Text styles</div>
         ${textRows || '<div class="ph" style="padding:4px 10px">None yet.</div>'}
-        <div class="ins-btnrow" style="padding:4px 8px"><button class="ed-btn sm" data-new="text" ${selText ? '' : 'disabled'}>＋ From selection</button></div>
+        <div class="ins-btnrow" style="padding:4px 8px"><button class="ed-btn sm" data-new="text" ${selText ? '' : 'disabled'}>+ From selection</button></div>
         <div class="pf-title" style="padding:8px 8px 4px">Paint styles</div>
         ${paintRows || '<div class="ph" style="padding:4px 10px">None yet.</div>'}
-        <div class="ins-btnrow" style="padding:4px 8px"><button class="ed-btn sm" data-new="paint" ${selPainted ? '' : 'disabled'}>＋ From selection</button></div>`;
+        <div class="ins-btnrow" style="padding:4px 8px"><button class="ed-btn sm" data-new="paint" ${selPainted ? '' : 'disabled'}>+ From selection</button></div>`;
 
       el.querySelectorAll('[data-tstyle]').forEach(r => r.addEventListener('click', (e) => {
         if (e.target.closest('[data-trename]') || e.target.closest('[data-tdel]')) return;
@@ -1168,7 +1203,7 @@
           <div class="varset-head">
             <b>${esc(set.name)}</b>
             <span class="varset-actions">
-              <button data-va="del-set" data-set="${set.id}">✕</button>
+              <button data-va="del-set" data-set="${set.id}">${Ico('close',{size:10})}</button>
             </span>
           </div>
           ${set.vars.map(v => {
@@ -1181,14 +1216,14 @@
             return `
             <div class="var-row" data-var="${v.id}">
               ${swatch}
-              <span class="var-name" data-vrname="${v.id}">${esc(v.name)}${aliasLabel ? ` <span class="alias-chip" title="Alias — resolves through ${esc(aliasLabel)}">→ ${esc(aliasLabel)}</span>` : ''}</span>
+              <span class="var-name" data-vrname="${v.id}">${esc(v.name)}${aliasLabel ? ` <span class="alias-chip" title="Alias — resolves through ${esc(aliasLabel)}">&#8594; ${esc(aliasLabel)}</span>` : ''}</span>
               ${v.type === 'color'
                 ? `<input type="color" data-vv="${v.id}" value="${M.normHex(disp)}" ${aliased ? 'title="Editing breaks the alias"' : ''}>`
                 : v.type === 'number' ? `<input type="number" data-vv="${v.id}" value="${disp}" ${aliased ? 'title="Editing breaks the alias"' : ''}>`
                 : v.type === 'boolean' ? `<select data-vv="${v.id}"><option ${disp ? 'sel' : ''}>true</option><option ${!disp ? 'sel' : ''}>false</option></select>`
                 : `<input data-vv="${v.id}" value="${esc(String(disp))}">`}
-              <button class="var-del" data-valias="${v.id}" title="Link to another variable (alias)">🔗</button>
-              <button class="var-del" data-vdel="${v.id}">✕</button>
+              <button class="var-del" data-valias="${v.id}" title="Link to another variable (alias)">${Ico('link',{size:12})}</button>
+              <button class="var-del" data-vdel="${v.id}">${Ico('close',{size:10})}</button>
             </div>`;
           }).join('')}
           <div class="var-add">
@@ -1211,7 +1246,7 @@
           <span class="var-actions">
             <button class="mini" id="var-exp-json">Export JSON</button>
             <button class="mini" id="var-exp-css">Export CSS</button>
-            <button class="mini" id="var-import">Import…</button>
+            <button class="mini" id="var-import">Import...</button>
             <input type="file" id="var-import-file" accept=".json" hidden>
           </span>
         </div>`;
@@ -1265,10 +1300,10 @@
         const curTarget = T.aliasTarget(doc, vid, mid);
         const menu = document.createElement('div');
         menu.className = 'pf-menu';
-        menu.innerHTML = `<div class="pf-title">Link “${esc(v.name)}” to…</div>` +
+        menu.innerHTML = `<div class="pf-title">Link “${esc(v.name)}” to...</div>` +
           (curTarget ? `<button data-av="clear">Clear alias</button><hr>` : '') +
           (sameType.length
-            ? sameType.map(t => `<button data-av="${t.id}">→ ${esc(t.label)}</button>`).join('')
+            ? sameType.map(t => `<button data-av="${t.id}">&#8594; ${esc(t.label)}</button>`).join('')
             : '<div class="ph" style="padding:8px">No other ' + v.type + ' variables.</div>');
         const r = b.getBoundingClientRect();
         menu.style.left = Math.min(r.right, innerWidth - 240) + 'px';
@@ -1343,15 +1378,16 @@
       const v = App.view;
       const el = document.createElement('div');
       el.className = 'pf-menu view-menu';
+      const chk = Ico('check',{size:10}) + ' ';
       el.innerHTML = `
         <div class="pf-title">View</div>
-        <button data-v="rulers">${v.rulers ? '✓ ' : ''}Show rulers</button>
-        <button data-v="grid">${v.grid ? '✓ ' : ''}Show grid</button>
+        <button data-v="rulers">${v.rulers ? chk : ''}Show rulers</button>
+        <button data-v="grid">${v.grid ? chk : ''}Show grid</button>
         <div class="pf-gridsize" title="Grid spacing (world px)">
-          ${[10, 20, 50].map(s => `<button data-gs="${s}" class="${v.grid === s ? 'active' : ''}">${s}</button>`).join('')}
+          ${[10,20,50].map(s => `<button data-gs="${s}" class="${v.grid===s?'active':''}">${s}</button>`).join('')}
         </div>
-        <button data-v="snap">${v.snap ? '✓ ' : ''}Snap on (smart guides)</button>
-        <button data-v="magnet" title="Snap only while holding Shift">🧲 Magnet mode</button>`;
+        <button data-v="snap">${v.snap ? chk : ''}Snap on (smart guides)</button>
+        <button data-v="magnet" title="Snap only while holding Shift">${Ico('magnet',{size:12})} Magnet mode</button>`;
       if (x == null || y == null) {
         const r = document.getElementById('ed-view').getBoundingClientRect();
         x = r.right; y = r.bottom + 4;
@@ -1382,17 +1418,26 @@
       const el = document.createElement('div');
       el.className = 'pf-menu';
       el.innerHTML = `
-        <div class="pf-title">Export</div>
-        ${App.sel.length ? '<button data-x="sel-png-1">PNG — selection (1×)</button><button data-x="sel-png-2">PNG — selection (2×)</button><button data-x="sel-svg">SVG — selection</button><button data-x="sel-pdf">PDF — selection</button><hr>' : ''}
-        <button data-x="page-png-1">PNG — whole page (1×)</button>
-        <button data-x="page-png-2">PNG — whole page (2×)</button>
-        <button data-x="page-svg">SVG — whole page</button>
-        <button data-x="page-pdf">PDF — whole page</button>
+        <div class="pf-title">Export selection</div>
+        ${App.sel.length ? `
+          <button data-x="sel-png-1">${Ico('png',{size:13})} PNG (1×)</button>
+          <button data-x="sel-png-2">${Ico('png',{size:13})} PNG (2×)</button>
+          <button data-x="sel-svg">${Ico('svg',{size:13})} SVG</button>
+          <button data-x="sel-pdf">${Ico('pdf',{size:13})} PDF</button>
+        ` : '<div class="ph" style="padding:6px 10px">Select something to export a slice.</div>'}
+        <div class="pf-title">Export page</div>
+        <button data-x="page-png-1">${Ico('png',{size:13})} PNG (1×)</button>
+        <button data-x="page-png-2">${Ico('png',{size:13})} PNG (2×)</button>
+        <button data-x="page-svg">${Ico('svg',{size:13})} SVG</button>
+        <button data-x="page-pdf">${Ico('pdf',{size:13})} PDF</button>
         <hr>
-        <button data-x="fig">Figma file (.fig)</button>
+        <div class="pf-title">File formats</div>
+        <button data-x="fig">${Ico('fig',{size:13})} Figma file (.fig)</button>
+        <button data-x="pfg">${Ico('pfg',{size:13})} Penfig file (.pfg)</button>
         <hr>
-        <button data-x="tok-json">Tokens — JSON (W3C)</button>
-        <button data-x="tok-css">Tokens — CSS variables</button>`;
+        <div class="pf-title">Design tokens</div>
+        <button data-x="tok-json">${Ico('code',{size:12})} JSON (W3C DTCG)</button>
+        <button data-x="tok-css">${Ico('css',{size:12})} CSS variables</button>`;
       if (x == null) { const r = document.getElementById('ed-export').getBoundingClientRect(); x = r.right; y = r.bottom + 4; }
       el.style.left = Math.min(x, innerWidth - 260) + 'px';
       el.style.top = Math.min(y, innerHeight - 300) + 'px';
@@ -1401,6 +1446,7 @@
         el.remove();
         const x = b.dataset.x;
         if (x === 'fig') DashExportFig();
+        else if (x === 'pfg') DashExportPfg();
         else if (x === 'tok-json') download(new Blob([JSON.stringify(T.exportW3C(doc), null, 2)], { type: 'application/json' }), doc.name + '-tokens.json');
         else if (x === 'tok-css') download(new Blob([T.exportCSS(doc)], { type: 'text/css' }), doc.name + '-tokens.css');
         else if (x === 'sel-svg' || x === 'page-svg') {
@@ -1416,7 +1462,7 @@
             if (!b2) { App.toast('Nothing to export'); return; }
             const parts = [];
             for (const id of App.sel) { const nd = page.nodes[id]; if (!nd) continue; }
-            // single-node selection → direct; multi → export the union as a group
+            // single-node selection &#8594; direct; multi &#8594; export the union as a group
             if (App.sel.length === 1) svg = Svg.renderNode(doc, page, page.nodes[App.sel[0]]);
             else {
               let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -1492,11 +1538,11 @@
         <hr>
         <button data-c="copyp">Copy properties</button>
         <button data-c="pastep">Paste properties</button>
-        ${isFrame ? `<hr><button data-c="${n.al ? 'alrm' : 'alv'}">${n.al ? 'Remove auto layout' : 'Add auto layout ↓'}</button>
-          ${(!App.doc.components || !App.doc.components[n.id]) ? '<button data-c="makecomp">◆ Make component</button>' : ''}` : ''}
+        ${isFrame ? `<hr><button data-c="${n.al?'alrm':'alv'}">${n.al?'Remove auto layout':'Add auto layout ↓'}</button>
+          ${(!App.doc.components||!App.doc.components[n.id])?'<button data-c="makecomp">'+Ico('component',{size:11})+' Make component</button>':''}` : ''}
         ${n.parent ? `<button data-c="mask">${n.mask ? 'Remove mask' : 'Use as mask (⌘/)'}</button>` : ''}
         ${n.type === 'vector' && n.path ? `<hr>
-        <button data-c="penedit">✒ Edit path nodes (Pen)</button>
+        <button data-c="penedit">${Ico('pen',{size:12})} Edit path nodes (Pen)</button>
         <button data-c="vsmooth">Make smooth</button>
         <button data-c="vcorner">Make corner</button>
         <button data-c="vsplit">Split path</button>
@@ -1509,13 +1555,13 @@
         <button data-c="flatten">Flatten (⇧⌘F)</button>` : ''}
         ${vecCount >= 1 ? `<button data-c="outline">Outline stroke</button>` : ''}
         ${multi ? `<hr>
-        <button data-c="al-left">⬅ Align left</button>
-        <button data-c="al-hc">↔ Align horizontal center</button>
-        <button data-c="al-right">➡ Align right</button>
-        <button data-c="al-top">⬆ Align top</button>
-        <button data-c="al-vc">↕ Align vertical center</button>
-        <button data-c="al-bottom">⬇ Align bottom</button>
-        ${ids.length >= 3 ? `<button data-c="dis-h">⇹ Distribute horizontally</button><button data-c="dis-v">⇸ Distribute vertically</button>` : ''}` : ''}
+        <button data-c="al-left">${Ico('align_l',{size:12})} Align left</button>
+        <button data-c="al-hc">${Ico('align_hc',{size:12})} Align H-center</button>
+        <button data-c="al-right">${Ico('align_r',{size:12})} Align right</button>
+        <button data-c="al-top">${Ico('align_t',{size:12})} Align top</button>
+        <button data-c="al-vc">${Ico('align_vc',{size:12})} Align V-center</button>
+        <button data-c="al-bottom">${Ico('align_b',{size:12})} Align bottom</button>
+        ${ids.length >= 3 ? `<button data-c="dis-h">${Ico('dist_h',{size:12})} Distribute H</button><button data-c="dis-v">${Ico('dist_v',{size:12})} Distribute V</button>` : ''}` : ''}
         <hr>
         <button data-c="lock">${n.locked ? 'Unlock' : 'Lock'}</button>
         <button data-c="${n.visible ? 'hide' : 'show'}">${n.visible ? 'Hide' : 'Show'}</button>
@@ -1638,7 +1684,7 @@
     // table, the dispatch, and this modal never drift apart (spec §5)
     shortcutsModal() {
       const pretty = (k) => {
-        const map = { mod: '⌘', shift: '⇧', alt: '⌥', space: 'Space', arrowleft: '←', arrowright: '→', arrowup: '↑', arrowdown: '↓', delete: '⌫', backspace: '⌫', escape: 'Esc', tab: 'Tab', '+': '+', '=': '=', '-': '−', '/': '/', '?': '?', ']': ']', '[': '[', '\\': '\\' };
+        const map = { mod: '⌘', shift: '⇧', alt: '⌥', space: 'Space', arrowleft: '&#8592;', arrowright: '&#8594;', arrowup: '&#8593;', arrowdown: '&#8595;', delete: '⌫', backspace: '⌫', escape: 'Esc', tab: 'Tab', '+': '+', '=': '=', '-': '−', '/': '/', '?': '?', ']': ']', '[': '[', '\\': '\\' };
         return k.split('+').map(p => (map[p] || p.toUpperCase())).join('');
       };
       const S = global.Shortcuts;
@@ -1685,7 +1731,7 @@
   function tokenSelect(kind, cur, act) {
     if (!App.doc) return '';
     const list = kind === 'color' ? T.colorVarList(App.doc) : T.numberVarList(App.doc);
-    return `<select class="f-token" data-act="${act}"><option value="">No token</option>${list.map(v => `<option value="${v.id}" ${cur === v.id ? 'sel' : ''}>◈ ${esc(v.label)}</option>`).join('')}</select>`;
+    return `<select class="f-token" data-act="${act}"><option value="">No token</option>${list.map(v => `<option value="${v.id}" ${cur === v.id ? 'sel' : ''}>${Ico('component',{size:10})} ${esc(v.label)}</option>`).join('')}</select>`;
   }
   function download(blob, name) {
     const a = document.createElement('a');
@@ -1698,14 +1744,26 @@
     const doc = App.doc;
     App.saveNow();
     App.layoutDoc(doc, App.page);
-    const thumb = global.Dash.thumbDataURL(doc, App.page, 240);
+    const thumb = global.Dash.thumbDataURL(doc, App.page, 480);
     try {
       const bytes = global.FigConv.exportFig(doc, { thumbnail: thumb });
-      global.Dash.downloadBytes(bytes, doc.name + '.fig');
-      App.toast('Exported ' + doc.name + '.fig — opens in Figma for supported node types', 5000);
+      global.Dash.downloadBytes(bytes, doc.name + '.fig', 'application/x-figma');
+      App.toast('Exported ' + doc.name + '.fig', 4000, 'success');
     } catch (err) {
       console.error(err);
-      App.toast('.fig export failed: ' + err.message, 6000);
+      App.toast('.fig export failed: ' + err.message, 6000, 'error');
+    }
+  }
+  function DashExportPfg() {
+    const doc = App.doc;
+    App.saveNow();
+    try {
+      const bytes = global.Dash.D.exportPfgBytes(doc);
+      global.Dash.downloadBytes(bytes, doc.name + '.pfg', 'application/zip');
+      App.toast('Exported ' + doc.name + '.pfg (Penfig native)', 4000, 'success');
+    } catch (err) {
+      console.error(err);
+      App.toast('.pfg export failed: ' + err.message, 6000, 'error');
     }
   }
 

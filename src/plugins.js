@@ -17,7 +17,7 @@
  * Plugin code is wrapped in an async IIFE: top-level `await` and
  * top-level `return <result>` both work.
  *
- * UI plugins (the 🖥 button) additionally get a sandboxed iframe(srcdoc)
+ * UI plugins (the Open button) additionally get a sandboxed iframe(srcdoc)
  * panel bridged over the same whitelisted RPC.
  */
 (function (global) {
@@ -409,7 +409,7 @@ modes.addEventListener('click', async (e) => {
       modal.className = 'pf-modal';
       modal.innerHTML = `
         <div class="pf-modal-card" style="width:380px">
-          <div class="pf-modal-head"><b>Plugin UI</b><button class="ed-iconbtn pf-modal-x">✕</button></div>
+          <div class="pf-modal-head"><b>Plugin UI</b><button class="ed-iconbtn pf-modal-x" title="Close">&times;</button></div>
           <iframe class="pf-ui-frame" sandbox="allow-scripts" style="width:100%;height:260px;border:1px solid #444;border-radius:6px;background:#17171c"></iframe>
           <pre class="pl-out" style="display:none;margin-top:8px"></pre>
         </div>`;
