@@ -40,13 +40,16 @@
       parent: null,           // parent node id, or null (page level)
       children: [],           // child node ids, z-order (first = back)
       x: 0, y: 0, w: 100, h: 100,
+      rotation: 0,            // radians, positive = clockwise (Figma convention is clockwise degrees; stored radians for Math API)
+      flipH: false,          // horizontal flip around vertical axis
+      flipV: false,          // vertical flip around horizontal axis
       visible: true, locked: false,
       opacity: 1,
       blend: 'normal',
       radius: [0, 0, 0, 0],   // tl tr br bl
       clips: type === 'frame',
       fills: [],
-      stroke: { color: '#000000', width: 1, opacity: 1, align: 'inside', token: null, visible: false },
+      stroke: { color: '#000000', width: 1, opacity: 1, align: 'inside', cap: 'butt', join: 'miter', dash: null, token: null, visible: false },
       shadows: [],            // [{color, opacity, x, y, blur, spread, visible}]
       blur: 0,
       al: null,               // container auto layout
@@ -221,6 +224,9 @@
       c.grid = n.grid ? { ...n.grid } : null;
       c.constraints = n.constraints ? { ...n.constraints } : { h: 'min', v: 'min' };
       c.props = n.props ? { ...n.props } : {};
+      c.rotation = n.rotation || 0;
+      c.flipH = !!n.flipH;
+      c.flipV = !!n.flipV;
       c._cloneMap = null;
       reg(c.id, c);
       map.set(n.id, c);
@@ -233,16 +239,59 @@
     return c0;
   }
   function forEachNode(page, n, fn) { fn(n); for (const cid of n.children) { const c = page.nodes[cid]; if (c) forEachNode(page, c, fn); } }
-  function boundsOf(page, n) {
-    // world (page) bounds incl. children
+  // --- rotation / flip helpers ---
+  // Apply a node's local rotation+flip around its center. Returns 4 corners
+  // (tl, tr, br, bl) of the node's AABB after rotation, in the SAME coords
+  // that x,y were passed in (parent-local or world).
+  function rotatedCorners(n, x, y, w, h) {
+    const rot = n.rotation || 0;
+    const fh = n.flipH ? -1 : 1, fv = n.flipV ? -1 : 1;
+    const cx = x + w / 2, cy = y + h / 2;
+    const cos = Math.cos(rot), sin = Math.sin(rot);
+    const pts = [
+      [-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2],
+    ];
+    return pts.map(([px, py]) => {
+      // flip first (around local center) then rotate
+      const lx = px * fh, ly = py * fv;
+      return { x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos };
+    });
+  }
+  // Axis-aligned bounding box that encloses an OBB.
+  function obbAabb(corners) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    const ox = n._l ? n._l.x : (n.parent ? (page.nodes[n.parent]._l ? page.nodes[n.parent]._l.x : page.nodes[n.parent].x) : n.x);
-    const oy = n._l ? n._l.y : (n.parent ? (page.nodes[n.parent]._l ? page.nodes[n.parent]._l.y : page.nodes[n.parent].y) : n.y);
+    for (const p of corners) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+  // Point-in-OBB test (inverse-transform point into local box coords).
+  function pointInObb(n, x, y, w, h, px, py) {
+    const rot = n.rotation || 0;
+    const fh = n.flipH ? -1 : 1, fv = n.flipV ? -1 : 1;
+    const cx = x + w / 2, cy = y + h / 2;
+    // translate to center, rotate by -rot, undo flip, then check rect
+    const dx = px - cx, dy = py - cy;
+    const cos = Math.cos(-rot), sin = Math.sin(-rot);
+    const rx = dx * cos - dy * sin;
+    const ry = dx * sin + dy * cos;
+    const lx = rx * fh, ly = ry * fv;
+    return lx >= -w / 2 - 0.5 && lx <= w / 2 + 0.5 && ly >= -h / 2 - 0.5 && ly <= h / 2 + 0.5;
+  }
+
+  function boundsOf(page, n) {
+    // world (page) bounds incl. children — handles rotation via OBB → AABB.
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const addBox = (bx, by, bw, bh, node) => {
+      if (node.rotation || node.flipH || node.flipV) {
+        const cs = rotatedCorners(node, bx, by, bw, bh);
+        for (const p of cs) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+      } else {
+        x0 = Math.min(x0, bx); y0 = Math.min(y0, by); x1 = Math.max(x1, bx + bw); y1 = Math.max(y1, by + bh);
+      }
+    };
     forEachNode(page, n, c => {
       const w = c._l ? c._l.w : c.w, h = c._l ? c._l.h : c.h;
-      const cx = c._l ? c._l.x : (c.parent ? ox + c.x : c.x);
-      const cy = c._l ? c._l.y : (c.parent ? oy + c.y : c.y);
-      x0 = Math.min(x0, cx); y0 = Math.min(y0, cy); x1 = Math.max(x1, cx + w); y1 = Math.max(y1, cy + h);
+      const cx = c._l ? c._l.x : c.x, cy = c._l ? c._l.y : c.y;
+      addBox(cx, cy, w, h, c);
     });
     if (!isFinite(x0)) { x0 = n.x; y0 = n.y; x1 = n.x + n.w; y1 = n.y + n.h; }
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
@@ -470,12 +519,22 @@
     }
   }
 
+  // HTML escape utility (used by UI layers; lives here so any module can use it
+  // without depending on Dash loading first).
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   global.Model = {
     uid, makeNode, makeAutoLayout, removeAutoLayout, ensureItemDefaults,
     newDoc, newPage, addPage, pageOf, node, kids, stampPage, attach, detach,
     ancestors, zIndexOf, reorder, reorderTo, reorderBy, deepClone, forEachNode, boundsOf,
+    rotatedCorners, obbAabb, pointInObb,
     History, snapshot, restore, ensureDocShape, store,
     normHex, hexToRgb, rgbToHex, rgbaCss,
     textResizeMode, applyTextResize, textResizeDemote,
+    esc,
   };
 })(window);

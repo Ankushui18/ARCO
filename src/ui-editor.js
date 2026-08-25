@@ -171,6 +171,7 @@
           <button id="ed-rulers" class="ed-iconbtn" title="Toggle rulers" aria-label="Rulers">${Ico('ruler',{size:16})}</button>
           <button id="ed-grid" class="ed-iconbtn" title="Toggle grid" aria-label="Grid">${Ico('grid',{size:14})}</button>
           <button id="ed-snap" class="ed-iconbtn" title="Toggle snap to objects" aria-label="Snap">${Ico('magnet',{size:16})}</button>
+          <button id="ed-view" class="ed-iconbtn" title="View options" aria-label="View">${Ico('eye',{size:15})}</button>
           <div class="ed-top-divider"></div>
           <button id="ed-present" class="ed-btn" title="Present prototype (⇧K)">${Ico('play',{size:12})} Present</button>
           <button id="ed-devmode" class="ed-btn" title="Dev mode (D) — inspect + code">${Ico('dev',{size:14})} Inspect</button>
@@ -377,6 +378,67 @@
         if (hit && !this.sel.includes(hit.id)) { this.sel = [hit.id]; this.markDirty(); }
         global.Panels.contextMenu(e.clientX, e.clientY, this.sel.length ? this.sel : [hit && hit.id].filter(Boolean));
       });
+      // Drag & drop image import (drop anywhere on canvas → placed at drop point)
+      c.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+      c.addEventListener('drop', (e) => {
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || !files.length) return;
+        e.preventDefault();
+        const p = this.toWorld(e);
+        for (const f of files) {
+          if (f.type && f.type.startsWith('image/')) this.placeImageFile(f, p);
+          else if (/\.pfg$/i.test(f.name)) {
+            f.arrayBuffer().then(b => this.openFromBytes(b, f.name, 'pfg'));
+            break;
+          } else if (/\.fig$/i.test(f.name)) {
+            f.arrayBuffer().then(b => this.openFromBytes(b, f.name, 'fig'));
+            break;
+          }
+        }
+      });
+    },
+    placeImageFile(file, at) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const src = reader.result;
+        const img = new Image();
+        img.onload = () => {
+          // Default 200px max dimension preserving aspect
+          const max = 200;
+          let w = img.naturalWidth, h = img.naturalHeight;
+          if (w > h) { h = h * (max / w); w = max; }
+          else { w = w * (max / h); h = max; }
+          this.history.begin(this.doc);
+          const n = M.makeNode('rect', {
+            x: at.x - w / 2, y: at.y - h / 2, w, h,
+            name: file.name.replace(/\.[^.]+$/, '') || 'Image',
+            fills: [{ type: 'image', src, scaleMode: 'fill', opacity: 1 }],
+            stroke: { color: '#000', width: 0, opacity: 0, align: 'inside', visible: false },
+          });
+          M.attach(this.doc, this.page, null, n);
+          this.history.end(this.doc);
+          this.setSel([n.id]);
+          this.markDirty();
+          this.toast('Placed image: ' + n.name, 2500, 'success');
+        };
+        img.src = src;
+      };
+      reader.readAsDataURL(file);
+    },
+    openFromBytes(bytes, name, kind) {
+      try {
+        const doc = kind === 'pfg' ? global.Dash.importPfg(bytes) : global.FigConv.importFig(new Uint8Array(bytes));
+        if (!doc) throw new Error('Parse failed');
+        doc.id = M.uid('doc-');
+        doc.name = name.replace(/\.(pfg|fig)$/i, '') || 'Imported';
+        const entry = { id: doc.id, name: doc.name, doc, updatedAt: Date.now() };
+        M.store.put(entry);
+        this.openFile(doc.id);
+        this.toast('Opened ' + doc.name, 2500, 'success');
+      } catch (err) {
+        console.error(err);
+        this.toast('Failed to open ' + name + ': ' + err.message, 5000, 'error');
+      }
     },
     resizeCanvas() {
       const c = this.canvas;
@@ -398,33 +460,49 @@
     // ------------------------------------------------------------- hit test
     hitTest(p) {
       const page = this.page;
-      const inRect = (n) => {
+      // Compute world-AABB clip for frames that clip content (rotation-aware).
+      const frameClips = (n) => {
+        if (!(n.type === 'frame' && n.clips)) return true;
+        const L = n._l;
+        if (!L) return false;
+        if (n.rotation || n.flipH || n.flipV) {
+          const cs = M.rotatedCorners(n, L.x, L.y, L.w, L.h);
+          let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+          for (const c of cs) { x0 = Math.min(x0, c.x); y0 = Math.min(y0, c.y); x1 = Math.max(x1, c.x); y1 = Math.max(y1, c.y); }
+          return p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
+        }
+        return p.x >= L.x && p.x <= L.x + L.w && p.y >= L.y && p.y <= L.y + L.h;
+      };
+      const pointInLocal = (n, wp) => {
+        // Transform world point into node-local coords (inverse of drawNode).
         const L = n._l;
         if (!L || n.visible === false) return false;
-        const x0 = L.x, y0 = L.y;
+        const cx = L.x + L.w / 2, cy = L.y + L.h / 2;
+        let dx = wp.x - cx, dy = wp.y - cy;
+        const rot = -(n.rotation || 0);
+        if (rot) { const c = Math.cos(rot), s = Math.sin(rot); const rx = dx * c - dy * s, ry = dx * s + dy * c; dx = rx; dy = ry; }
+        if (n.flipH) dx = -dx;
+        if (n.flipV) dy = -dy;
+        const lx = dx + L.w / 2, ly = dy + L.h / 2;
         if (n.type === 'ellipse') {
-          const dx = (p.x - (x0 + L.w / 2)) / (L.w / 2), dy = (p.y - (y0 + L.h / 2)) / (L.h / 2);
-          return dx * dx + dy * dy <= 1;
+          const rx = lx - L.w / 2, ry = ly - L.h / 2;
+          return (rx * rx) / ((L.w / 2) * (L.w / 2)) + (ry * ry) / ((L.h / 2) * (L.h / 2)) <= 1.02;
         }
         if (n.type === 'line') {
-          const pad = Math.max(4, n.stroke.width) / this.view.zoom;
-          return p.x >= x0 - pad && p.x <= x0 + L.w + pad && p.y >= y0 - pad && p.y <= y0 + L.h + pad;
+          const pad = Math.max(4, n.stroke.width || 1) / this.view.zoom;
+          return lx >= -pad && lx <= L.w + pad && ly >= -pad && ly <= L.h + pad;
         }
-        return p.x >= x0 && p.x <= x0 + L.w && p.y >= y0 && p.y <= y0 + L.h;
+        return lx >= 0 && lx <= L.w && ly >= 0 && ly <= L.h;
       };
       const visit = (n) => {
-        // children first (topmost = last child)
         for (let i = n.children.length - 1; i >= 0; i--) {
           const k = page.nodes[n.children[i]];
           if (!k) continue;
-          if (n.type === 'frame' && n.clips) {
-            const L = n._l;
-            if (p.x < L.x || p.x > L.x + L.w || p.y < L.y || p.y > L.y + L.h) continue;
-          }
+          if (!frameClips(n)) continue;
           const r = visit(k);
           if (r) return r;
         }
-        return inRect(n) ? n : null;
+        return pointInLocal(n, p) ? n : null;
       };
       for (let i = page.tops.length - 1; i >= 0; i--) {
         const t = page.tops[i] ? page.nodes[page.tops[i]] : null;
@@ -438,18 +516,28 @@
       if (this.sel.length !== 1) return null;
       const n = this.page.nodes[this.sel[0]];
       if (!n || !n._l) return null;
-      const s = this.toScreen({ x: n._l.x, y: n._l.y });
-      const w = n._l.w * this.view.zoom, h = n._l.h * this.view.zoom;
-      const pts = [
-        ['nw', s.x, s.y], ['n', s.x + w / 2, s.y], ['ne', s.x + w, s.y],
-        ['e', s.x + w, s.y + h / 2], ['se', s.x + w, s.y + h],
-        ['s', s.x + w / 2, s.y + h], ['sw', s.x, s.y + h], ['w', s.x, s.y + h / 2],
-      ];
       const rect = this.canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const z = this.view.zoom;
+      const corners = M.rotatedCorners(n, n._l.x, n._l.y, n._l.w, n._l.h).map(p => ({ x: p.x * z + this.view.ox, y: p.y * z + this.view.oy }));
+      // 8 resize handles: corners + edge midpoints in screen space
+      const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+      const c0 = corners[0], c1 = corners[1], c2 = corners[2], c3 = corners[3];
+      const pts = [
+        ['nw', c0.x, c0.y], ['n', mid(c0, c1).x, mid(c0, c1).y], ['ne', c1.x, c1.y],
+        ['e', mid(c1, c2).x, mid(c1, c2).y], ['se', c2.x, c2.y],
+        ['s', mid(c2, c3).x, mid(c2, c3).y], ['sw', c3.x, c3.y], ['w', mid(c3, c0).x, mid(c3, c0).y],
+      ];
       for (const [name, x, y] of pts) {
-        if (Math.abs(mx - x) <= 6 && Math.abs(my - y) <= 6) return { name, node: n };
+        if (Math.abs(mx - x) <= 7 && Math.abs(my - y) <= 7) return { name, node: n, kind: 'resize' };
       }
+      // Rotate handle: 22px outward from top-edge midpoint along the edge's outward normal.
+      const topMid = mid(c0, c1);
+      const ex = c1.x - c0.x, ey = c1.y - c0.y;
+      const elen = Math.hypot(ex, ey) || 1;
+      const nx = -ey / elen, ny = ex / elen;
+      const rh = { x: topMid.x + nx * 22, y: topMid.y + ny * 22 };
+      if (Math.abs(mx - rh.x) <= 8 && Math.abs(my - rh.y) <= 8) return { name: 'rotate', node: n, kind: 'rotate' };
       return null;
     },
 
@@ -535,13 +623,16 @@
       const h = this.handleAt(e);
       if (h) {
         this.history.begin(this.doc);
-        // sp = the START POINTER in canvas space (doResize computes total
-        // delta against it), ox/oy = view snapshot at drag start so a
-        // mid-drag pan divides out. (Earlier versions passed the node origin
-        // as sp, which double-counted the handle offset, and omitted ox/oy
-        // entirely, producing NaN — both caught by the P0 acceptance matrix.)
         const crect = this.canvas.getBoundingClientRect();
-        this._drag = { kind: 'resize', name: h.name, node: h.node, start: { x: h.node.x, y: h.node.y, w: h.node.w, h: h.node.h }, sp: { x: e.clientX - crect.left, y: e.clientY - crect.top }, ox: this.view.ox, oy: this.view.oy };
+        if (h.kind === 'rotate') {
+          const n = h.node;
+          const cx = n._l.x + n._l.w / 2, cy = n._l.y + n._l.h / 2;
+          const start = this.toWorld(e);
+          this._drag = { kind: 'rotate', node: n, startRot: n.rotation || 0, cx, cy, sa: Math.atan2(start.y - cy, start.x - cx), shift: e.shiftKey };
+          n._rotLabel = true;
+        } else {
+          this._drag = { kind: 'resize', name: h.name, node: h.node, start: { x: h.node.x, y: h.node.y, w: h.node.w, h: h.node.h, rotation: h.node.rotation || 0 }, sp: { x: e.clientX - crect.left, y: e.clientY - crect.top }, ox: this.view.ox, oy: this.view.oy };
+        }
         return;
       }
       const hit = this.hitTest(p);
@@ -613,6 +704,20 @@
         this.statusPos();
       } else if (d.kind === 'resize') {
         this.doResize(d, e);
+      } else if (d.kind === 'rotate') {
+        const ang = Math.atan2(p.y - d.cy, p.x - d.cx);
+        let rot = ang - d.sa + d.startRot;
+        if (e.shiftKey) {
+          const snap = Math.PI / 12; // 15° increments with Shift
+          rot = Math.round(rot / snap) * snap;
+        }
+        // Normalize to [-PI, PI]
+        while (rot > Math.PI) rot -= Math.PI * 2;
+        while (rot < -Math.PI) rot += Math.PI * 2;
+        d.node.rotation = rot;
+        this.markDirty();
+        const deg = Math.round(rot * 180 / Math.PI);
+        this.status(` ${deg}°`);
       } else if (d.kind === 'marquee') {
         const x = Math.min(d.sx, p.x), y = Math.min(d.sy, p.y);
         const w = Math.abs(p.x - d.sx), h = Math.abs(p.y - d.sy);
@@ -636,55 +741,79 @@
     doResize(d, e) {
       const n = d.node;
       const z = this.view.zoom;
-      const dx = (e.movementX) / z, dy = (e.movementY) / z;
-      // accumulate from start
-      const totalDx = (this.toWorld(e).x) - (d.sp.x / z + (this.view.ox - d.ox) / z);
-      const totalDy = (this.toWorld(e).y) - (d.sp.y / z + (this.view.oy - d.oy) / z);
-      let { x, y, w, h } = d.start;
-      if (d.name.includes('e')) w = Math.max(4, d.start.w + totalDx);
-      if (d.name.includes('s')) h = Math.max(4, d.start.h + totalDy);
-      if (d.name.includes('w')) w = Math.max(4, d.start.w - totalDx);
-      if (d.name.includes('n')) h = Math.max(4, d.start.h - totalDy);
-      // Smart-guide snapping (same engine as move): only the moving edge of
-      // the box plus its center line may snap — the fixed edge stays put.
-      if (this.snapEnabled(e)) {
+      const p = this.toWorld(e);
+      const rot = d.start.rotation || 0;
+      const cos = Math.cos(rot), sin = Math.sin(rot);
+      const fh = n.flipH ? -1 : 1, fv = n.flipV ? -1 : 1;
+      const sx = d.start.x, sy = d.start.y, sw = d.start.w, sh = d.start.h;
+      const scx = sx + sw / 2, scy = sy + sh / 2;
+      // Convert current pointer to node-local coords (unrotated, unflipped)
+      // relative to the start center.
+      const gdx = p.x - scx, gdy = p.y - scy;
+      // inverse rotate
+      const rdx = gdx * cos + gdy * sin;
+      const rdy = -gdx * sin + gdy * cos;
+      // inverse flip
+      const ldx = rdx * fh, ldy = rdy * fv;
+      // Local half-size implied by pointer.
+      const halfX = Math.abs(ldx);
+      const halfY = Math.abs(ldy);
+      let w = sw, h = sh;
+      // corner handles move both axes; edge handles move one.
+      const movesE = d.name.includes('e');
+      const movesW = d.name.includes('w');
+      const movesS = d.name.includes('s');
+      const movesN = d.name.includes('n');
+      const isCorner = d.name.length === 2;
+      if (isCorner) {
+        if (e.shiftKey) {
+          // preserve aspect ratio
+          const ratio = sw / sh;
+          const candidateW = Math.max(4, 2 * Math.max(halfX, halfY * ratio));
+          const candidateH = candidateW / ratio;
+          w = candidateW; h = candidateH;
+        } else {
+          w = Math.max(4, 2 * halfX);
+          h = Math.max(4, 2 * halfY);
+        }
+      } else {
+        if (movesE || movesW) w = Math.max(4, 2 * halfX);
+        if (movesN || movesS) h = Math.max(4, 2 * halfY);
+      }
+      // Position: keep center fixed during resize (matches how we computed sizes from center).
+      let x = scx - w / 2, y = scy - h / 2;
+      if (n.type === 'text') {
+        if (movesE || movesW) M.textResizeDemote(n, 'h');
+        if (movesN || movesS) M.textResizeDemote(n, 'v');
+      }
+      n.x = x; n.y = y; n.w = w; n.h = h;
+      // Smart guides are approximate when rotated — skip for rotated nodes to avoid mis-snaps.
+      if ((rot || n.flipH || n.flipV)) {
+        this._snapGuides = null;
+      } else if (this.snapEnabled(e)) {
         const allow = {
           x: d.name.includes('e') ? ['right', 'cx'] : d.name.includes('w') ? ['left', 'cx'] : [],
           y: d.name.includes('s') ? ['bottom', 'cy'] : d.name.includes('n') ? ['top', 'cy'] : [],
         };
         const r = this._snapBox({ x, y, w, h }, [n.id], allow);
         if (r) {
-          if (r.xs) {
+          if (r.xs && (movesE || movesW)) {
             if (r.xs.side === 'right') w = Math.max(4, w + r.dx);
-            else if (r.xs.side === 'left') w = Math.max(4, d.start.x + d.start.w - r.xs.val);
-            else { const west = d.start.x, east = d.start.x + d.start.w; w = Math.max(4, d.name.includes('e') ? 2 * (r.xs.val - west) : 2 * (east - r.xs.val)); }
+            else if (r.xs.side === 'left') w = Math.max(4, x + w - r.xs.val);
+            if (movesW) x = r.xs.val;
           }
-          if (r.ys) {
+          if (r.ys && (movesN || movesS)) {
             if (r.ys.side === 'bottom') h = Math.max(4, h + r.dy);
-            else if (r.ys.side === 'top') h = Math.max(4, d.start.y + d.start.h - r.ys.val);
-            else { const north = d.start.y, south = d.start.y + d.start.h; h = Math.max(4, d.name.includes('s') ? 2 * (r.ys.val - north) : 2 * (south - r.ys.val)); }
+            else if (r.ys.side === 'top') h = Math.max(4, y + h - r.ys.val);
+            if (movesN) y = r.ys.val;
           }
           this._snapGuides = r.guides;
         } else this._snapGuides = null;
       }
-      // west/north handles derive their origin from the new size — do it
-      // AFTER snapping so a snapped left/top edge survives.
-      if (d.name.includes('w')) x = d.start.x + d.start.w - w;
-      if (d.name.includes('n')) y = d.start.y + d.start.h - h;
-      if (e.shiftKey && d.name.length === 2) {
-        const s = d.start.w / d.start.h;
-        if (Math.abs(w / h - s) > 0.01) { h = w / s; }
-      }
-      if (n.type === 'text') {
-        // Figma muscle memory: dragging a handle on a hugging axis fixes it
-        if (d.name.includes('e') || d.name.includes('w')) M.textResizeDemote(n, 'h');
-        if (d.name.includes('n') || d.name.includes('s')) M.textResizeDemote(n, 'v');
-      }
-      n.x = x; n.y = y; n.w = w; n.h = h;
-      if (n.shape) n.path = this._shapePath(n); // regular shapes re-fit their bbox
+      if (n.shape) n.path = this._shapePath(n);
       if (n.type === 'text') this.applyTextResize(n);
       this.markDirty();
-      this.statusPos();
+      this.status(`x ${Math.round(n.x)}   y ${Math.round(n.y)}   w ${Math.round(n.w)}   h ${Math.round(n.h)}`);
     },
     statusPos() {
       if (this.sel.length === 1) {
@@ -829,6 +958,10 @@
         if ((node.type === 'frame' || node.type === 'instance') && !node.al) {
           global.Layout.applyConstraints(App.page, node, d.start.w, d.start.h);
         }
+        this.history.end(this.doc);
+      }
+      else if (d.kind === 'rotate') {
+        if (d.node) delete d.node._rotLabel;
         this.history.end(this.doc);
       }
       else this.history.cancel();
@@ -1373,6 +1506,8 @@
         { label: 'Group selection', hint: '⌘G', kw: '', run: () => A.groupSel() },
         { label: 'Ungroup selection', hint: '⇧⌘G', kw: '', run: () => A.ungroup() },
         { label: 'Duplicate selection', hint: '⌘D', kw: 'copy', run: () => A.duplicateSel() },
+        { label: 'Flip horizontal', hint: '⇧H', kw: 'mirror', run: () => A.flipSel('h') },
+        { label: 'Flip vertical', hint: '⇧V', kw: 'mirror', run: () => A.flipSel('v') },
         { label: 'Union (selection)', hint: '⌘]', kw: 'boolean vector combine merge', run: () => A.booleanSel('union') },
         { label: 'Subtract (selection)', hint: '⌘[', kw: 'boolean vector cut remove', run: () => A.booleanSel('subtract') },
         { label: 'Intersect (selection)', hint: '⌘\\', kw: 'boolean vector overlap common', run: () => A.booleanSel('intersect') },
@@ -1632,6 +1767,19 @@
       this.history.begin(this.doc);
       for (const id of ids) M.detach(this.page, this.page.nodes[id]);
       this.sel = [];
+      this.history.end(this.doc);
+      global.Panels.refreshInspector();
+      this.markDirty();
+    },
+    flipSel(axis) {
+      const ids = this.sel.filter(id => { const n = this.page.nodes[id]; return n && !n.locked; });
+      if (!ids.length) return;
+      this.history.begin(this.doc);
+      for (const id of ids) {
+        const n = this.page.nodes[id];
+        if (axis === 'h') n.flipH = !n.flipH;
+        else n.flipV = !n.flipV;
+      }
       this.history.end(this.doc);
       global.Panels.refreshInspector();
       this.markDirty();
@@ -2085,6 +2233,7 @@
 
   function centerOf(c) { const r = c.getBoundingClientRect(); return { x: r.width / 2, y: r.height / 2 }; }
   function cursorFor(h) {
+    if (h === 'rotate') return 'crosshair';
     return { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize' }[h] || 'default';
   }
   function marqueeSelect(page, box) {

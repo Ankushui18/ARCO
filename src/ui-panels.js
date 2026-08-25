@@ -175,6 +175,17 @@
             ${field('X', 'x', Math.round(n.x))}${field('Y', 'y', Math.round(n.y))}
             ${multi ? '<span class="ins-dim">W</span><span class="ins-dim">H</span>' : field('W', 'w', Math.round(n.w)) + field('H', 'h', Math.round(n.h))}
           </div>
+          ${!multi ? `
+            <div class="ins-grid g4" style="grid-template-columns:1fr auto;">
+              <label class="ins-lbl" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">
+                <span style="flex:0 0 auto;">Rotation</span>
+                <input type="number" class="ins-num" data-act="rot-deg" step="1" value="${Math.round((n.rotation||0)*180/Math.PI)}">
+                <span style="opacity:.6;font-size:11px;">°</span>
+                <span style="flex:1"></span>
+                <button class="ed-btn sm" data-act="flip-h" title="Flip horizontal (⇧H)">${Ico('flip-h',{size:14})}</button>
+                <button class="ed-btn sm" data-act="flip-v" title="Flip vertical (⇧V)">${Ico('flip-v',{size:14})}</button>
+              </label>
+            </div>` : ''}
           ${!multi ? radiusRow(n) : ''}
           <div class="ins-row">
             <label>Opacity</label>
@@ -285,6 +296,30 @@
               <option value="inside" ${s.align === 'inside' ? 'sel' : ''}>Inside</option>
               <option value="center" ${s.align === 'center' ? 'sel' : ''}>Center</option>
               <option value="outside" ${s.align === 'outside' ? 'sel' : ''}>Outside</option>
+            </select>
+          </div>
+          <div class="ins-grid g3">
+            <label>Cap</label>
+            <select data-act="stroke-cap" ${s.visible ? '' : 'disabled'}>
+              <option value="butt" ${s.cap === 'butt' ? 'sel' : ''}>Butt</option>
+              <option value="round" ${s.cap === 'round' ? 'sel' : ''}>Round</option>
+              <option value="square" ${s.cap === 'square' ? 'sel' : ''}>Square</option>
+            </select>
+            <label>Join</label>
+            <select data-act="stroke-join" ${s.visible ? '' : 'disabled'}>
+              <option value="miter" ${s.join === 'miter' ? 'sel' : ''}>Miter</option>
+              <option value="round" ${s.join === 'round' ? 'sel' : ''}>Round</option>
+              <option value="bevel" ${s.join === 'bevel' ? 'sel' : ''}>Bevel</option>
+            </select>
+          </div>
+          <div class="ins-row">
+            <label>Dashes</label>
+            <select data-act="stroke-dash" ${s.visible ? '' : 'disabled'}>
+              <option value="" ${!s.dash || !s.dash.length ? 'sel' : ''}>Solid</option>
+              <option value="4,4" ${s.dash && s.dash.join(',')==='4,4' ? 'sel' : ''}>Dashed (4,4)</option>
+              <option value="8,4" ${s.dash && s.dash.join(',')==='8,4' ? 'sel' : ''}>Dashed (8,4)</option>
+              <option value="2,2" ${s.dash && s.dash.join(',')==='2,2' ? 'sel' : ''}>Dotted (2,2)</option>
+              <option value="12,4,2,4" ${s.dash && s.dash.join(',')==='12,4,2,4' ? 'sel' : ''}>Dash-dot</option>
             </select>
           </div>
         </section>`;
@@ -1013,6 +1048,15 @@
         commit(() => { for (const x of nodes) x.opacity = op.value / 100; });
         const lab = el.querySelector('#op-val'); if (lab) lab.textContent = op.value + '%';
       });
+      // rotation (degrees)
+      const rotInp = el.querySelector('[data-act="rot-deg"]');
+      if (rotInp) rotInp.addEventListener('change', () => {
+        const deg = parseFloat(rotInp.value) || 0;
+        commit(() => { n.rotation = deg * Math.PI / 180; });
+      });
+      // flip buttons
+      el.querySelectorAll('[data-act="flip-h"]').forEach(b => b.addEventListener('click', () => commit(() => { n.flipH = !n.flipH; P.refreshInspector(); })));
+      el.querySelectorAll('[data-act="flip-v"]').forEach(b => b.addEventListener('click', () => commit(() => { n.flipV = !n.flipV; P.refreshInspector(); })));
       // radius
       el.querySelectorAll('[data-rad]').forEach(inp => inp.addEventListener('input', () => {
         const v = Math.max(0, parseFloat(inp.value) || 0);
@@ -1093,6 +1137,14 @@
       if (sw) sw.addEventListener('input', () => commit(() => { n.stroke.width = Math.max(0, +sw.value || 0); }));
       const sa = el.querySelector('[data-act="stroke-align"]');
       if (sa) sa.addEventListener('change', () => commit(() => { n.stroke.align = sa.value; }));
+      const scap = el.querySelector('[data-act="stroke-cap"]');
+      if (scap) scap.addEventListener('change', () => commit(() => { n.stroke.cap = scap.value; }));
+      const sjoin = el.querySelector('[data-act="stroke-join"]');
+      if (sjoin) sjoin.addEventListener('change', () => commit(() => { n.stroke.join = sjoin.value; }));
+      const sdash = el.querySelector('[data-act="stroke-dash"]');
+      if (sdash) sdash.addEventListener('change', () => commit(() => {
+        n.stroke.dash = sdash.value ? sdash.value.split(',').map(Number) : null;
+      }));
       // effects
       el.querySelectorAll('[data-sh]').forEach(inp => inp.addEventListener('input', () => {
         const i = +inp.dataset.sh, f = inp.dataset.f, v = f === 'color' ? inp.value : (+inp.value || 0);

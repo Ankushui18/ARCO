@@ -104,9 +104,19 @@
     }
 
     // --- pages
-    const canvasNodes = docId
+    let canvasNodes = docId
       ? sortKids(docId).filter(n => n.type === 'CANVAS' || n.type === 'SLIDE')
       : nodes.filter(n => (n.type === 'CANVAS' || n.type === 'SLIDE') && !n.parentIndex);
+    // Figma internal canvases (e.g. "Internal Only Canvas") are not user-visible
+    // pages — they contain no user nodes. Filter them out.
+    canvasNodes = canvasNodes.filter(cn => {
+      const name = (cn.name || '').toLowerCase();
+      if (name.includes('internal')) return false;
+      // also drop empty pages whose only purpose is internal metadata
+      const kids = sortKids(gid(cn));
+      // keep if the page has a user-visible name OR has at least one non-variable child
+      return kids.some(k => k.type !== 'VARIABLE' && k.type !== 'VARIABLE_SET');
+    });
     if (!canvasNodes.length) {
       const page = M.newPage('Page 1');
       doc.pages = [page];

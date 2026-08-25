@@ -591,5 +591,19 @@
     return entries;
   }
 
-  global.Dash = { D, makeStarterDoc, saveDoc, thumbDataURL, downloadBytes, esc, ago };
+  // Expose the PFG native-format helpers so other modules (import menu,
+  // command palette, tests) can call them without reaching into D.
+  global.Dash = {
+    D, makeStarterDoc, saveDoc, thumbDataURL, downloadBytes, esc, ago,
+    exportPfgBytes: (doc) => D.exportPfgBytes(doc),
+    importPfg: (bytes) => D.importPfg(bytes),
+    exportFig: (doc, opts) => {
+      // Convenience wrapper: lays out the doc, generates a thumbnail, and
+      // returns the .fig bytes. Mirrors the export menu flow.
+      try { global.App && global.App.layoutDoc && global.App.layoutDoc(doc); } catch (e) {}
+      let thumb = null;
+      try { thumb = thumbDataURL(doc, doc.pages[0], 480); } catch (e) {}
+      return global.FigConv.exportFig(doc, Object.assign({ thumbnail: thumb }, opts || {}));
+    },
+  };
 })(window);

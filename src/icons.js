@@ -89,6 +89,8 @@
     forward:  ['<rect x="4" y="8" width="12" height="12" rx="1" opacity=".45"/><rect x="8" y="4" width="12" height="12" rx="1"/>'],
     backward: ['<rect x="8" y="4" width="12" height="12" rx="1" opacity=".45"/><rect x="4" y="8" width="12" height="12" rx="1"/>'],
     back:     ['<rect x="8" y="8" width="12" height="12" rx="1" opacity=".45"/><rect x="4" y="4" width="12" height="12" rx="1"/>'],
+    'flip-h': ['<path d="M12 3v18M8 7l-4 5 4 5M16 7l4 5-4 5" stroke-linecap="round" stroke-linejoin="round"/>'],
+    'flip-v': ['<path d="M3 12h18M7 8l5-4 5 4M7 16l5 4 5-4" stroke-linecap="round" stroke-linejoin="round"/>'],
     group:    ['<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M11 7h6a2 2 0 012 2v4M13 17H7a2 2 0 01-2-2v-4"/>'],
     ungroup:  ['<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>'],
     frame_sel:['<rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 2"/>'],

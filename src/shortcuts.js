@@ -91,6 +91,10 @@
   def('shift+mod+\\', 'Exclude', 'Vector', (a) => a.booleanSel('exclude'));
   def('shift+mod+f', 'Flatten selection', 'Vector', (a) => a.flattenSel());
 
+  // ------------------------------------------------------------- Transform (rotate/flip)
+  def('shift+h', 'Flip horizontal', 'Transform', (a) => a.flipSel('h'));
+  def('shift+v', 'Flip vertical', 'Transform', (a) => a.flipSel('v'));
+
   def('shift+1', 'Zoom to fit', 'View', (a) => a.zoomToFit());
   def('shift+2', 'Zoom to selection', 'View', (a) => a.zoomToSelection());
   def('0', 'Zoom to fit', 'View', (a) => a.zoomToFit());

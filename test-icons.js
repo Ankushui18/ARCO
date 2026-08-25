@@ -1,0 +1,11 @@
+const vm = require('vm');
+const fs = require('fs');
+const ctx = { window: {}, document: { createElement: () => ({ getContext: () => null }) } };
+ctx.global = ctx; ctx.self = ctx; ctx.window = ctx;
+ctx.console = console; ctx.navigator = {}; ctx.localStorage = { getItem: () => null, setItem: () => {}}; ctx.indexedDB = undefined;
+vm.runInNewContext(fs.readFileSync('src/icons.js', 'utf8'), ctx);
+const I = ctx.window.Icons;
+console.log('flip-h:', I.svg('flip-h', {size:16}).includes('<path'));
+console.log('flip-v:', I.svg('flip-v', {size:16}).includes('<path'));
+console.log('move:', I.svg('move', {size:16}).length > 20);
+console.log('Total icons registered:', I.ALL && Object.keys(I.ALL).length);
