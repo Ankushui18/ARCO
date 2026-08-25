@@ -106,8 +106,8 @@
     const decl = (k, v) => { if (v != null && v !== '') out.push(pad2 + '  ' + k + ': ' + v); };
     decl('position', 'relative');
     if (n._l || n.w) {
-      decl('width', Math.round(n._l ? n._l.w : n.w) + 'px');
-      decl('height', Math.round(n._l ? n._l.h : n.h) + 'px');
+      decl('width', Math.round(n.w) + 'px');
+      decl('height', Math.round(n.h) + 'px');
     }
     if (n.type === 'text') {
       const t = n.text || {};

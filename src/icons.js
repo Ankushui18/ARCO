@@ -14,7 +14,8 @@
 
     // ── tools ──
     move:     ['M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20'],
-    frame:    ['<rect x="4" y="4" width="16" height="16" rx="1.5"/><path d="M9 4v16M15 4v16M4 9h16M4 15h16" opacity=".35"/>'],
+    // Frame icon: Figma-style — square outline with small corner L-ticks.
+    frame:    [['<rect x="3" y="3" width="18" height="18" rx="1.5"/>','M3 6V3h3','M21 6V3h-3','M21 18v3h-3','M3 18v3h3']],
     section:  ['<rect x="3" y="5" width="18" height="14" rx="2" stroke-dasharray="2 2"/>'],
     rect:     ['<rect x="4" y="5" width="16" height="14" rx="1.5"/>'],
     rect_radius: ['<rect x="4" y="5" width="16" height="14" rx="4"/>'],
@@ -185,6 +186,36 @@
     draft:    ['<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>'],
     trash2:   ['<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6"/>'],
     duplicate:['<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V4a2 2 0 012-2h12"/>'],
+    // minimap / navigator
+    minimap: ['<rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="4" height="4" fill="currentColor" stroke="none" opacity=".6"/><rect x="13" y="7" width="4" height="4" fill="currentColor" stroke="none" opacity=".6"/><rect x="7" y="13" width="10" height="4" fill="currentColor" stroke="none" opacity=".6"/>'],
+    // search filter
+    filter: ['<path d="M3 5h18M6 12h12M10 19h4"/>'],
+    // check-circle for success
+    check_circle: ['<circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/>'],
+    x_circle: ['<circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>'],
+    // loading spinner
+    spinner: ['<path d="M12 3a9 9 0 019 9" stroke-linecap="round"/>'],
+    // health / pulse
+    pulse: ['<path d="M3 12h4l2-6 4 12 2-6h6"/>'],
+    // responsive / devices
+    phone: ['<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>'],
+    tablet: ['<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M11 18h2"/>'],
+    desktop: ['<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>'],
+    // alert/error
+    alert_tri: ['<path d="M12 2L1 21h22L12 2z"/><path d="M12 9v5M12 17v.01"/>'],
+    // bullet list
+    list: ['<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/>'],
+    // underline/strike
+    underline: ['<path d="M6 4v7a6 6 0 0012 0V4M4 21h16"/>'],
+    strike: ['<path d="M4 12h16M6 6a6 6 0 0110.4-3M17.7 9.5a6 6 0 01-10 5"/>'],
+    // link/unlink
+    unlink: ['<path d="M17 7a5 5 0 013.5 8.5M10 14a5 5 0 01-7-7l3-3a5 5 0 017 0M3 3l18 18" opacity=".8"/>'],
+    // section / divider
+    section2: ['<path d="M3 12h18" stroke-dasharray="2 2"/><path d="M3 6h18M3 18h18" opacity=".35"/>'],
+    // window / new window
+    window: ['<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 8h18"/>'],
+    // restore / recover
+    recover: ['<path d="M3 12a9 9 0 0115.5-6.3L21 8M21 3v5h-5"/><path d="M21 12a9 9 0 01-15.5 6.3L3 16M3 21v-5h5"/>'],
   };
 
   function svg(name, opts) {

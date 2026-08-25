@@ -104,8 +104,8 @@
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     M.forEachNode(page, n, (c) => {
       if (!c._l || c.visible === false) return;
-      minX = Math.min(minX, c._l.x); minY = Math.min(minY, c._l.y);
-      maxX = Math.max(maxX, c._l.x + c._l.w); maxY = Math.max(maxY, c._l.y + c._l.h);
+      minX = Math.min(minX, c._w.x); minY = Math.min(minY, c._w.y);
+      maxX = Math.max(maxX, c._w.x + c._w.w); maxY = Math.max(maxY, c._w.y + c._w.h);
     });
     if (!isFinite(minX)) { minX = n.x; minY = n.y; maxX = n.x + n.w; maxY = n.y + n.h; }
     const PAD = 0;
@@ -113,8 +113,8 @@
     // mask clip paths
     M.forEachNode(page, n, (c) => {
       if (c.mask && c._l) {
-        if (c.type === 'ellipse') defs.push(`<clipPath id="m${c.id}"><ellipse cx="${c._l.x + c._l.w / 2}" cy="${c._l.y + c._l.h / 2}" rx="${c._l.w / 2}" ry="${c._l.h / 2}"/></clipPath>`);
-        else defs.push(`<clipPath id="m${c.id}"><rect x="${c._l.x}" y="${c._l.y}" width="${c._l.w}" height="${c._l.h}"/></clipPath>`);
+        if (c.type === 'ellipse') defs.push(`<clipPath id="m${c.id}"><ellipse cx="${c._w.x + c._w.w / 2}" cy="${c._w.y + c._w.h / 2}" rx="${c._w.w / 2}" ry="${c._w.h / 2}"/></clipPath>`);
+        else defs.push(`<clipPath id="m${c.id}"><rect x="${c._w.x}" y="${c._w.y}" width="${c._w.w}" height="${c._w.h}"/></clipPath>`);
       }
     });
     nodeSvg(n, doc, page, out, defs, 0);

@@ -1,19 +1,28 @@
 /* render.js — Penfig canvas renderer.
  *
- * All geometry comes from the layout engine (Layout.layoutPage); after layout,
- * every node has n._l = {x,y,w,h} in WORLD (page) coordinates and n.x/n.y in
- * PARENT-LOCAL coordinates. drawNode paints in parent-local space and applies
- * the node's own translate → rotate → flip via canvas transforms, so children
- * automatically inherit rotation/flip. Selection/hit-testing uses OBB math
- * in Model (pointInObb / rotatedCorners / obbAabb).
+ * Coordinate model (SINGLE SOURCE OF TRUTH — keep in sync with world.js):
+ *   n.x, n.y     — parent-local position (where Layout places children).
+ *   n.w, n.h     — size in LOCAL content space.
+ *   n._wt        — [a,b,c,d,e,f] local(0..w,0..h) → WORLD affine (World.js).
+ *   n._wc[4]     — 4 WORLD corners [tl,tr,br,bl] after rotate/flip.
+ *   n._w         — {x,y,w,h} axis-aligned WORLD bounding box.
+ *   n._l         — {x,y,w,h} parent-local placed box (mirror of n.x/y/w/h).
  *
- * The same drawing code powers the editor, PNG export, and dashboard thumbs.
+ * The canvas transform stack in drawNode applies the EXACT same sequence
+ * as World.localToParent — that is how render geometry and interaction
+ * geometry stay aligned. If you change one, change the other.
+ *
+ *   ctx.translate(n.x, n.y)
+ *   if (rot|flip) { ctx.translate(w/2,h/2); rotate(r); scale(fh,fv); translate(-w/2,-h/2); }
+ *
+ * Selection/hit-test/resize/snap consume n._wc projected to screen via
+ * World.screenCorners(view, n). No independent "selection math".
  */
 (function (global) {
   'use strict';
 
   const M = global.Model;
-  const imgCache = new Map();   // dataURL → HTMLImageElement
+  const imgCache = new Map();
 
   function imgFor(src) {
     if (!src) return null;
@@ -31,10 +40,31 @@
     const fam = (t.font || 'Inter').replace(/^["']|["']$/g, '');
     return `'${fam}', Inter, 'Helvetica Neue', Arial, sans-serif`;
   }
-  function fontSpec(n, scale = 1) {
+  function fontSpec(n, scale = 1, override) {
     const t = n.text || {};
-    const italic = t.italic ? 'italic ' : '';
-    return `${italic}${t.weight || 400} ${Math.max(1, t.size * scale)}px ${fontStack(n)}`;
+    const o = override || {};
+    const weight = o.weight != null ? o.weight : (t.weight || 400);
+    const sz = Math.max(1, (o.size != null ? o.size : t.size) * scale);
+    const italic = o.italic != null ? (o.italic ? 'italic ' : '') : (t.italic ? 'italic ' : '');
+    const ff = o.font || fontStack(n);
+    return `${italic}${weight} ${sz}px ${ff}`;
+  }
+  // Apply per-run styles to ctx (font, fillStyle). Used by rich text renderer.
+  function applyRunStyle(ctx, run, n, doc) {
+    const t = n.text || {};
+    ctx.font = fontSpec(n, 1, run);
+    try { ctx.letterSpacing = ((run.letterSpacing != null ? run.letterSpacing : t.letterSpacing) || 0) + 'px'; } catch(e){}
+    let col;
+    if (run.color) col = run.color;
+    else {
+      const fill = n.fills && n.fills[0];
+      const { color, opacity } = resolvedColor(doc, fill || { color: '#1e1e1e' }, '#1e1e1e');
+      ctx.globalAlpha = (ctx.globalAlphaBase ?? 1) * (n.opacity == null ? 1 : n.opacity) * (fill && fill.opacity != null ? fill.opacity : 1) * (run.opacity != null ? run.opacity : 1);
+      ctx.fillStyle = M.rgbaCss(color, opacity);
+      return;
+    }
+    const op = run.opacity != null ? run.opacity : ((n.fills && n.fills[0] && n.fills[0].opacity != null) ? n.fills[0].opacity : 1);
+    ctx.fillStyle = M.rgbaCss(col, op);
   }
 
   // ------------------------------------------------------------- text metrics
@@ -48,7 +78,7 @@
     const setLS = () => { try { ctx.letterSpacing = (ls || 0) + 'px'; } catch (e) { } };
     setLS();
     const out = [];
-    for (const rawLine of text.split('\n')) {
+    for (const rawLine of String(text || '').split('\n')) {
       if (width <= 0 || rawLine === '') { out.push(rawLine); continue; }
       const words = rawLine.split(/(\s+)/);
       let line = '';
@@ -63,6 +93,7 @@
     try { ctx.letterSpacing = '0px'; } catch (e) { }
     return out;
   }
+  // Text wrap width in LOCAL content space.
   function textBoxWidth(n) {
     if (n.als) return n.als.w === 'hug' ? 0 : n.w;
     const r = (n.text && n.text.resize) || 'fixed';
@@ -73,9 +104,9 @@
     const ctx = textCtx();
     ctx.font = fontSpec(n);
     const size = t.size || 14;
-    const lh = (typeof t.lineHeight === 'number' && t.lineHeight > 0) ? t.lineHeight : 1.2;
-    const lineH = size * lh;
-    const cw = boxW == null ? textBoxWidth(n) : boxW;
+    const lhMul = (typeof t.lineHeight === 'number' && t.lineHeight > 0) ? t.lineHeight : 1.2;
+    const lineH = size * lhMul;
+    const cw = (boxW == null) ? textBoxWidth(n) : boxW;
     const lines = wrapText(ctx, t.content || '', fontSpec(n), cw > 0 ? cw - 2 : 0, t.letterSpacing);
     let w = 0;
     for (const l of lines) w = Math.max(w, ctx.measureText(l).width);
@@ -87,30 +118,20 @@
     const ctx = textCtx();
     ctx.font = fontSpec(n);
     const size = t.size || 14;
-    const lh = (typeof t.lineHeight === 'number' && t.lineHeight > 0) ? t.lineHeight : 1.2;
+    const lhMul = (typeof t.lineHeight === 'number' && t.lineHeight > 0) ? t.lineHeight : 1.2;
     const lines = wrapText(ctx, t.content || '', fontSpec(n), boxW > 0 ? boxW : 0, t.letterSpacing);
-    return { lines, lineH: size * lh };
+    return { lines, lineH: size * lhMul };
   }
 
   // ------------------------------------------------------------- colors
   function resolvedColor(doc, field, fallback) {
     if (!field) return { color: fallback, opacity: 1 };
     let color = field.color || fallback;
-    if (field.token) {
-      const v = global.Tokens ? global.Tokens.getValue(doc, field.token) : null;
+    if (field.token && global.Tokens) {
+      const v = global.Tokens.getValue(doc, field.token);
       if (v && typeof v === 'string' && v.startsWith('#')) color = v;
     }
     return { color: M.normHex(color), opacity: field.opacity == null ? 1 : field.opacity };
-  }
-  function numToken(doc, field, fallback) {
-    if (field && typeof field === 'object') {
-      if (field.tok) {
-        const v = global.Tokens ? global.Tokens.getValue(doc, field.tok) : null;
-        if (typeof v === 'number' && isFinite(v)) return v;
-      }
-      return typeof field.n === 'number' ? field.n : 0;
-    }
-    return typeof field === 'number' ? field : (fallback || 0);
   }
 
   // ------------------------------------------------------------- paths
@@ -130,15 +151,11 @@
     ctx.closePath();
   }
 
-  // Apply stroke dash/cap/join state to ctx and return a restore thunk.
   function applyStrokeStyle(ctx, stroke) {
-    const cap = stroke && stroke.cap ? stroke.cap : 'butt';
-    const join = stroke && stroke.join ? stroke.join : 'miter';
-    const dash = stroke && stroke.dash && stroke.dash.length ? stroke.dash : null;
-    ctx.lineCap = cap;
-    ctx.lineJoin = join;
-    if (dash) ctx.setLineDash(dash);
-    return () => { if (dash) ctx.setLineDash([]); };
+    ctx.lineCap = (stroke && stroke.cap) || 'butt';
+    ctx.lineJoin = (stroke && stroke.join) || 'miter';
+    if (stroke && stroke.dash && stroke.dash.length) ctx.setLineDash(stroke.dash);
+    else ctx.setLineDash([]);
   }
 
   function drawPaints(ctx, x, y, w, h, fills, doc) {
@@ -159,10 +176,10 @@
         ctx.fillStyle = g;
         ctx.fillRect(x, y, w, h);
       } else if (f.type === 'radial') {
-        const fx = x + (f.from?.x ?? 0.5) * w, fy = y + (f.from?.y ?? 0.5) * h;
+        const cx = x + (f.from?.x ?? 0.5) * w, cy = y + (f.from?.y ?? 0.5) * h;
         const tx = x + (f.to?.x ?? 0.5) * w, ty = y + (f.to?.y ?? 0.5) * h;
         const r = f.r != null ? f.r * Math.max(w, h) : Math.hypot(w, h) / 2;
-        const g = ctx.createRadialGradient(fx, fy, 0, tx, ty, r);
+        const g = ctx.createRadialGradient(cx, cy, 0, tx, ty, r);
         for (const s of f.stops || []) {
           const { color, opacity } = resolvedColor(doc, s, '#000000');
           g.addColorStop(Math.max(0, Math.min(1, s.pos ?? 0)), M.rgbaCss(color, opacity));
@@ -180,14 +197,12 @@
           if (f.scaleMode === 'fit') {
             const s = Math.min(w / iw, h / ih);
             ctx.drawImage(img, x + (w - iw * s) / 2, y + (h - ih * s) / 2, iw * s, ih * s);
-          } else if (f.scaleMode === 'fill') {
-            const s = Math.max(w / iw, h / ih);
-            ctx.drawImage(img, x + (w - iw * s) / 2, y + (h - ih * s) / 2, iw * s, ih * s);
           } else if (f.scaleMode === 'tile') {
             const tw = (f.tileScale || 1) * iw, th = (f.tileScale || 1) * ih;
             for (let yy = y; yy < y + h; yy += th) for (let xx = x; xx < x + w; xx += tw) ctx.drawImage(img, xx, yy, tw, th);
-          } else {
-            ctx.drawImage(img, x, y, w, h);
+          } else { // fill / crop
+            const s = Math.max(w / iw, h / ih);
+            ctx.drawImage(img, x + (w - iw * s) / 2, y + (h - ih * s) / 2, iw * s, ih * s);
           }
           ctx.restore();
         } else {
@@ -211,22 +226,24 @@
     ctx.globalAlpha = opacity * (ctx.globalAlphaBase ?? 1);
     ctx.strokeStyle = M.rgbaCss(color, 1);
     ctx.lineWidth = wt;
-    const rss = applyStrokeStyle(ctx, stroke);
+    applyStrokeStyle(ctx, stroke);
     let ox = x, oy = y, ow = w, oh = h;
     if (stroke.align === 'outside') {
       ox -= wt; oy -= wt; ow += wt * 2; oh += wt * 2;
+      roundedPath(ctx, ox, oy, ow, oh, r);
+      ctx.stroke();
     } else if (stroke.align === 'inside') {
       ctx.save();
       roundedPath(ctx, x, y, w, h, r);
       ctx.clip();
-      ox -= wt / 2; oy -= wt / 2; ow += wt; oh += wt;
+      roundedPath(ctx, x - wt/2, y - wt/2, w + wt, h + wt, r);
+      ctx.stroke();
+      ctx.restore();
     } else {
-      ox -= wt / 2; oy -= wt / 2; ow += wt; oh += wt;
+      roundedPath(ctx, x - wt/2, y - wt/2, w + wt, h + wt, r);
+      ctx.stroke();
     }
-    roundedPath(ctx, ox, oy, ow, oh, r);
-    ctx.stroke();
-    rss();
-    if (stroke.align === 'inside') ctx.restore();
+    ctx.setLineDash([]);
     ctx.restore();
   }
 
@@ -247,8 +264,6 @@
     }
   }
 
-  // vector node: real path geometry (painted in local coords — caller already
-  // translated/rotated/flipped us; no extra translate here).
   function drawVector(ctx, n, doc, x, y, w, h) {
     const d = n.path;
     if (d && typeof Path2D !== 'undefined') {
@@ -257,8 +272,8 @@
         const rule = n.windingRule === 'evenodd' ? 'evenodd' : 'nonzero';
         ctx.save();
         ctx.translate(x, y);
-        // normalize path to box (paths from pen/boolean live in [0..w,0..h])
-        ctx.scale(w / (n.pathW || w || 1), h / (n.pathH || h || 1));
+        const pw = n.pathW || w, ph = n.pathH || h;
+        if (pw > 0 && ph > 0) ctx.scale(w / pw, h / ph);
         const fill = (n.fills || []).find(f => f && f.visible !== false);
         if (fill) {
           if (fill.type === 'solid') {
@@ -267,7 +282,6 @@
             ctx.fillStyle = M.rgbaCss(color, 1);
             ctx.fill(p, rule);
           } else if (fill.type === 'linear') {
-            const pw = n.pathW || w || 1, ph = n.pathH || h || 1;
             const g = ctx.createLinearGradient((fill.from?.x ?? 0) * pw, (fill.from?.y ?? 0) * ph, (fill.to?.x ?? 1) * pw, (fill.to?.y ?? 1) * ph);
             for (const s of fill.stops || []) {
               const { color, opacity } = resolvedColor(doc, s, '#000000');
@@ -282,7 +296,7 @@
               ctx.globalAlpha = (ctx.globalAlphaBase ?? 1) * (fill.opacity == null ? 1 : fill.opacity);
               ctx.save();
               ctx.clip(p, rule);
-              ctx.drawImage(img, 0, 0, n.pathW || w, n.pathH || h);
+              ctx.drawImage(img, 0, 0, pw, ph);
               ctx.restore();
             }
           }
@@ -292,9 +306,9 @@
           ctx.globalAlpha = (ctx.globalAlphaBase ?? 1) * (n.stroke.opacity == null ? 1 : n.stroke.opacity);
           ctx.strokeStyle = M.rgbaCss(color, 1);
           ctx.lineWidth = n.stroke.width;
-          const rss = applyStrokeStyle(ctx, n.stroke);
+          applyStrokeStyle(ctx, n.stroke);
           ctx.stroke(p);
-          rss();
+          ctx.setLineDash([]);
         }
         ctx.restore();
         return;
@@ -314,9 +328,13 @@
   }
 
   // ------------------------------------------------------------- node paint
+  // Called with the canvas already in the PARENT's content space (i.e. for
+  // tops, ctx is in page/world space; for children, their parent's transform
+  // stack has already been applied). n.x/n.y are parent-local, which is what
+  // we translate to.
   function drawNode(ctx, page, n, doc) {
     if (n.visible === false) return;
-    const w = n._l ? n._l.w : n.w, h = n._l ? n._l.h : n.h;
+    const w = n.w, h = n.h;
     const lx = n.x, ly = n.y;
     const rot = n.rotation || 0;
 
@@ -327,45 +345,48 @@
       if (map[n.blend]) ctx.globalCompositeOperation = map[n.blend];
     }
 
-    // Local transform: translate to pos → rotate around center → flip →
-    // rebase origin to top-left so fills/strokes use (0,0,w,h) local coords.
-    ctx.translate(lx + w / 2, ly + h / 2);
-    if (rot) ctx.rotate(rot);
-    if (n.flipH || n.flipV) ctx.scale(n.flipH ? -1 : 1, n.flipV ? -1 : 1);
-    ctx.translate(-w / 2, -h / 2);
-
-    const x = 0, y = 0;
+    // Local transform: translate to top-left corner in parent space, then
+    // rotate/flip AROUND center so children inherit. drawPaints/etc use (0,0)
+    // top-left of the local box.
+    ctx.translate(lx, ly);
+    if (rot || n.flipH || n.flipV) {
+      ctx.translate(w/2, h/2);
+      if (rot) ctx.rotate(rot);
+      if (n.flipH || n.flipV) ctx.scale(n.flipH ? -1 : 1, n.flipV ? -1 : 1);
+      ctx.translate(-w/2, -h/2);
+    }
+    // Now (0,0) = top-left of local content; children draw at (k.x,k.y).
 
     if ((n.type === 'frame' || n.type === 'instance') && n.clips) {
-      roundedPath(ctx, x, y, w, h, n.radius);
+      roundedPath(ctx, 0, 0, w, h, n.radius);
       ctx.clip();
     }
 
     if (n.type === 'frame' || n.type === 'instance') {
       if (n.section && !n.fills.length) {
         ctx.fillStyle = '#efeff1';
-        ctx.fillRect(x, y, w, h);
+        ctx.fillRect(0, 0, w, h);
         ctx.strokeStyle = '#d5d5da';
         ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
+        ctx.strokeRect(0.5, 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
       } else {
-        if (!n.fills.length) { ctx.globalAlpha = (ctx.globalAlphaBase ?? 1); ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(x, y, w, h); ctx.globalAlpha = ctx.globalAlphaBase; }
+        if (!n.fills.length) { ctx.globalAlpha = (ctx.globalAlphaBase ?? 1); ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(0, 0, w, h); ctx.globalAlpha = ctx.globalAlphaBase; }
       }
-      drawPaints(ctx, x, y, w, h, n.fills, doc);
-      if (n.grid && n.grid.visible !== false) drawGrid(ctx, x, y, w, h, n.grid);
+      drawPaints(ctx, 0, 0, w, h, n.fills, doc);
+      if (n.grid && n.grid.visible !== false) drawGrid(ctx, 0, 0, w, h, n.grid);
     } else if (n.type === 'rect') {
-      drawShadows(ctx, x, y, w, h, n.radius, n.shadows);
-      roundedPath(ctx, x, y, w, h, n.radius);
+      drawShadows(ctx, 0, 0, w, h, n.radius, n.shadows);
+      roundedPath(ctx, 0, 0, w, h, n.radius);
       ctx.save(); ctx.clip();
-      drawPaints(ctx, x, y, w, h, n.fills, doc);
+      drawPaints(ctx, 0, 0, w, h, n.fills, doc);
       ctx.restore();
-      drawStroke(ctx, x, y, w, h, n.radius, n.stroke);
+      drawStroke(ctx, 0, 0, w, h, n.radius, n.stroke);
     } else if (n.type === 'ellipse') {
-      drawShadows(ctx, x, y, w, h, null, n.shadows);
+      drawShadows(ctx, 0, 0, w, h, null, n.shadows);
       ctx.beginPath();
-      ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+      ctx.ellipse(w/2, h/2, w/2, h/2, 0, 0, Math.PI * 2);
       ctx.save(); ctx.clip();
-      drawPaints(ctx, x, y, w, h, n.fills, doc);
+      drawPaints(ctx, 0, 0, w, h, n.fills, doc);
       ctx.restore();
       if (n.stroke && n.stroke.visible) {
         const { color, opacity } = resolvedColor(n.stroke, '#000000');
@@ -373,11 +394,11 @@
         ctx.globalAlpha = opacity * (ctx.globalAlphaBase ?? 1);
         ctx.strokeStyle = M.rgbaCss(color, 1);
         ctx.lineWidth = n.stroke.width || 0;
-        const rss = applyStrokeStyle(ctx, n.stroke);
+        applyStrokeStyle(ctx, n.stroke);
         ctx.beginPath();
-        ctx.ellipse(x + w / 2, y + h / 2, Math.max(0.5, w / 2 - (n.stroke.width || 0) / 2), Math.max(0.5, h / 2 - (n.stroke.width || 0) / 2), 0, 0, Math.PI * 2);
+        ctx.ellipse(w/2, h/2, Math.max(0.5, w/2 - (n.stroke.width || 0)/2), Math.max(0.5, h/2 - (n.stroke.width || 0)/2), 0, 0, Math.PI * 2);
         ctx.stroke();
-        rss();
+        ctx.setLineDash([]);
         ctx.restore();
       }
     } else if (n.type === 'line') {
@@ -386,31 +407,30 @@
       ctx.globalAlpha = opacity * (ctx.globalAlphaBase ?? 1);
       ctx.strokeStyle = M.rgbaCss(color, 1);
       ctx.lineWidth = n.stroke.width || 1;
-      const rss = applyStrokeStyle(ctx, n.stroke);
+      applyStrokeStyle(ctx, n.stroke);
       ctx.beginPath();
-      ctx.moveTo(x, y + h / 2);
-      ctx.lineTo(x + w, y + h / 2);
+      ctx.moveTo(0, h/2);
+      ctx.lineTo(w, h/2);
       ctx.stroke();
       if (n.arrowEnd) {
         const len = Math.max(10, (n.stroke.width || 1) * 5);
         const a = Math.PI * 26 / 180;
-        const ex = x + w, ey = y + h / 2;
         ctx.beginPath();
-        ctx.moveTo(ex, ey);
-        ctx.lineTo(ex - len * Math.cos(a), ey - len * Math.sin(a));
-        ctx.moveTo(ex, ey);
-        ctx.lineTo(ex - len * Math.cos(-a), ey - len * Math.sin(-a));
+        ctx.moveTo(w, h/2);
+        ctx.lineTo(w - len * Math.cos(a), h/2 - len * Math.sin(a));
+        ctx.moveTo(w, h/2);
+        ctx.lineTo(w - len * Math.cos(-a), h/2 - len * Math.sin(-a));
         ctx.stroke();
       }
-      rss();
+      ctx.setLineDash([]);
       ctx.restore();
     } else if (n.type === 'text') {
-      drawText(ctx, page, n, doc);
+      drawText(ctx, n, doc, w, h);
     } else if (n.type === 'vector') {
-      drawVector(ctx, n, doc, x, y, w, h);
+      drawVector(ctx, n, doc, 0, 0, w, h);
     }
 
-    // children (k.x,k.y are parent-local; we're in n's local space).
+    // Children — draw in same local transform so they inherit rotate/flip.
     if (n.type === 'frame' || n.type === 'rect' || n.type === 'ellipse' || n.type === 'instance') {
       const maskKid = M.kids(page, n).find(k => k.mask);
       if (maskKid) {
@@ -418,7 +438,7 @@
         ctx.save();
         if (maskKid.type === 'ellipse') {
           ctx.beginPath();
-          ctx.ellipse(maskKid.x + maskKid.w / 2, maskKid.y + maskKid.h / 2, maskKid.w / 2, maskKid.h / 2, 0, 0, Math.PI * 2);
+          ctx.ellipse(maskKid.x + maskKid.w/2, maskKid.y + maskKid.h/2, maskKid.w/2, maskKid.h/2, 0, 0, Math.PI * 2);
           ctx.clip();
         } else {
           roundedPath(ctx, maskKid.x, maskKid.y, maskKid.w, maskKid.h, maskKid.radius);
@@ -433,7 +453,7 @@
     ctx.restore();
   }
 
-  // layout grid (columns / rows) inside a frame — local coords
+  // Layout grid (columns/rows) inside a frame — LOCAL coords.
   function drawGrid(ctx, x, y, w, h, grid) {
     const count = Math.max(1, grid.count || 1);
     const gap = grid.gap || 8, off = grid.offset || 0;
@@ -456,12 +476,11 @@
     ctx.restore();
   }
 
-  function drawText(ctx, page, n, doc) {
-    const w = n._l ? n._l.w : n.w, h = n._l ? n._l.h : n.h;
+  function drawText(ctx, n, doc, w, h) {
     const t = n.text || {};
     ctx.save();
     ctx.globalAlpha = (ctx.globalAlphaBase ?? 1) * (n.opacity == null ? 1 : n.opacity);
-    const fill = n.fills[0];
+    const fill = n.fills && n.fills[0];
     const { color, opacity } = resolvedColor(doc, fill || { color: '#1e1e1e' }, '#1e1e1e');
     ctx.fillStyle = M.rgbaCss(color, opacity);
     ctx.font = fontSpec(n);
@@ -469,18 +488,79 @@
     const size = t.size || 14;
     const lhMul = (typeof t.lineHeight === 'number' && t.lineHeight > 0) ? t.lineHeight : 1.2;
     const lineH = size * lhMul;
-    const { lines } = textLines(n, textBoxWidth(n));
-    const totalH = lines.length * lineH;
+
+    // Build effective runs array (rich text)
+    // If n.text.runs exists, it is an array of {text, font?, weight?, size?, color?, italic?, underline?, strike?}
+    // Otherwise fall back to single run from n.text.content
+    const runs = Array.isArray(t.runs) && t.runs.length
+      ? t.runs
+      : [{ text: String(t.content || ''), color: null }];
+
+    // Flatten runs into per-line structures (handling \n)
+    const plain = runs.map(r => r.text || '').join('');
+    const baseW = textBoxWidth(n);
+    // For rich text we measure the entire line text for wrap
+    const { lines: wrappedLines } = textLines(n, baseW);
+
+    // Compute runs per line — split runs by line boundaries
+    const lineRuns = [];
+    {
+      let runIdx = 0, runOff = 0, chars = 0;
+      for (const line of wrappedLines){
+        let remaining = line.length;
+        const lr = [];
+        while (remaining > 0 && runIdx < runs.length){
+          const r = runs[runIdx];
+          const avail = (r.text||'').length - runOff;
+          const take = Math.min(avail, remaining);
+          lr.push({ text: (r.text||'').substr(runOff, take), run: r });
+          runOff += take; remaining -= take; chars += take;
+          if (runOff >= (r.text||'').length){ runIdx++; runOff = 0; }
+        }
+        lineRuns.push(lr);
+      }
+    }
+
+    const totalH = lineRuns.length * lineH;
     let top = 0;
     if (t.valign === 'middle') top = Math.max(0, (h - totalH) / 2);
     else if (t.valign === 'bottom') top = Math.max(0, h - totalH);
     ctx.textBaseline = 'alphabetic';
-    lines.forEach((line, i) => {
+
+    lineRuns.forEach((lr, i) => {
+      const y = top + i * lineH + lineH * 0.82;
+      // Measure line total for alignment
+      let totalW = 0;
+      const segWidths = [];
+      for (const seg of lr){
+        applyRunStyle(ctx, seg.run, n, doc);
+        const w = ctx.measureText(seg.text).width;
+        segWidths.push(w); totalW += w;
+      }
+      // Restore base font for total width fallback
+      ctx.font = fontSpec(n);
       let tx = 0;
-      const lw = ctx.measureText(line).width;
-      if (t.align === 'center') tx = (w - lw) / 2;
-      else if (t.align === 'right') tx = w - lw;
-      ctx.fillText(line, tx, top + i * lineH + lineH * 0.82);
+      if (t.align === 'center') tx = (w - totalW) / 2;
+      else if (t.align === 'right') tx = w - totalW;
+      // Draw each segment
+      for (let si=0; si<lr.length; si++){
+        const seg = lr[si];
+        applyRunStyle(ctx, seg.run, n, doc);
+        ctx.fillText(seg.text, tx, y);
+        // underline / strike
+        if (seg.run.underline || seg.run.strike){
+          const sw = Math.max(1, (seg.run.size||size)*0.07);
+          ctx.save();
+          ctx.strokeStyle = ctx.fillStyle;
+          ctx.lineWidth = sw;
+          ctx.beginPath();
+          const yy = seg.run.underline ? y + 2 : y - size*0.3;
+          ctx.moveTo(tx, yy); ctx.lineTo(tx+segWidths[si], yy);
+          ctx.stroke();
+          ctx.restore();
+        }
+        tx += segWidths[si];
+      }
     });
     try { ctx.letterSpacing = '0px'; } catch (e) { }
     ctx.restore();
@@ -488,45 +568,83 @@
 
   // ------------------------------------------------------------- page paint
   function drawPage(ctx, page, doc, view) {
-    ctx.save();
-    ctx.clearRect(0, 0, view.w, view.h);
+    // Always start from a clean identity-then-DPR transform. The previous
+    // frame may have left ctx in the world-transform state (translate+scale),
+    // so clearRect/fillRect here must operate in device-pixel CSS space.
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Reset all state that drawNode / shadows / strokes may have dirtied.
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.setLineDash([]);
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+    ctx.lineCap = 'butt'; ctx.lineJoin = 'miter'; ctx.lineWidth = 1;
+    ctx.font = '12px Inter, sans-serif';
+    ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+
     const zoom = view.zoom;
-    const gridStep = 24 * zoom;
-    if (gridStep > 7) {
-      ctx.fillStyle = 'rgba(0,0,0,0.14)';
-      const startX = ((view.ox % gridStep) + gridStep) % gridStep;
-      const startY = ((view.oy % gridStep) + gridStep) % gridStep;
-      for (let gx = startX; gx < view.w; gx += gridStep) {
-        for (let gy = startY; gy < view.h; gy += gridStep) {
-          ctx.fillRect(gx, gy, 1, 1);
-        }
+
+    // Canvas background — color comes from view.canvasColor (View menu).
+    // Figma defaults to neutral gray; users can switch to black/white/custom.
+    // Do NOT clearRect first — on GPU-accelerated canvases that can cause a
+    // 1-frame transparent flash ("flicker") before fillRect paints. A full
+    // opaque fillRect alone covers the previous frame completely.
+    const canvasColor = view.canvasColor || '#383838';
+    ctx.fillStyle = canvasColor;
+    ctx.strokeStyle = canvasColor;
+    ctx.fillRect(0, 0, view.w, view.h);
+
+    // Pixel grid: only drawn when pixelPreview is on AND zoom ≥ 800%.
+    // Color chosen to be visible on both dark and light canvas.
+    if (view.pixelPreview !== false && zoom >= 8) {
+      const step = Math.max(1, Math.round(zoom));
+      // Pick grid color by perceived brightness of the canvas bg.
+      const isDark = canvasColor.length >= 7
+        ? (parseInt(canvasColor.slice(1,3),16) + parseInt(canvasColor.slice(3,5),16) + parseInt(canvasColor.slice(5,7),16)) / 3 < 140
+        : true;
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.08)';
+      const startX = ((view.ox % step) + step) % step;
+      const startY = ((view.oy % step) + step) % step;
+      for (let gx = startX; gx < view.w; gx += step) {
+        ctx.fillRect(Math.round(gx) - 0.5, 0, 1, view.h);
+      }
+      for (let gy = startY; gy < view.h; gy += step) {
+        ctx.fillRect(0, Math.round(gy) - 0.5, view.w, 1);
       }
     }
+
+    // User grid (togglable) is drawn in screen space here BEFORE we
+    // enter the world transform, so lines are always 1px crisp.
     if (view.grid) drawGridLines(ctx, view);
+
+    // Enter world space.
+    ctx.save();
     ctx.translate(view.ox, view.oy);
     ctx.scale(zoom, zoom);
+    ctx._zoom = zoom;
+    // Reset state after scale so strokes/fills are clean.
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([]);
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
     for (const tid of page.tops) {
       const t = page.nodes[tid];
       if (t) drawNode(ctx, page, t, doc);
     }
     ctx.restore();
-    // frame name labels (screen space)
+
+    // Frame name labels (screen space, projected from world AABB top-left).
     if (zoom >= 0.35) {
       ctx.save();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.font = `11px Inter, 'Helvetica Neue', Arial, sans-serif`;
-      ctx.fillStyle = 'rgba(60,60,70,0.85)';
+      ctx.fillStyle = 'rgba(220,220,230,0.75)';
+      ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
       const mark = (n) => {
-        if (n.type === 'frame' && n._l && n.visible !== false && !n.parent) {
-          // project world center of top edge to screen
-          const corners = M.rotatedCorners(n, n._l.x, n._l.y, n._l.w, n._l.h);
-          // find the topmost corner average
-          let topY = Infinity, topCx = 0;
-          for (const c of corners) if (c.y < topY) { topY = c.y; topCx = c.x; }
-          // use top-center of AABB for label anchor when not rotated
-          const ax = n._l.x + n._l.w / 2, ay = n._l.y;
-          const sx = ax * zoom + view.ox;
-          const sy = ay * zoom + view.oy - 8;
-          if (sx > -200 && sx < view.w + 200 && sy > -200 && sy < view.h + 200) {
+        if (n.type === 'frame' && n._w && n.visible !== false && !n.parent) {
+          const sx = n._w.x * zoom + view.ox;
+          const sy = n._w.y * zoom + view.oy - 14;
+          if (sx > -200 && sx < view.w + 200 && sy > -20 && sy < view.h + 200) {
             ctx.fillText(n.name, sx, sy);
           }
         }
@@ -550,6 +668,7 @@
     }
     ctx.scale(scale, scale);
     ctx.translate(-bounds.x + pad, -bounds.y + pad);
+    ctx._zoom = scale;
     for (const tid of page.tops) {
       const t = page.nodes[tid];
       if (t) drawNode(ctx, page, t, doc);
@@ -559,22 +678,13 @@
 
   function pageBounds(page) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, any = false;
-    const addN = (n) => {
-      if (!n._l || n.visible === false) return;
+    for (const tid of page.tops) {
+      const t = page.nodes[tid];
+      if (!t || !t._w) continue;
       any = true;
-      if (n.rotation || n.flipH || n.flipV) {
-        const cs = M.rotatedCorners(n, n._l.x, n._l.y, n._l.w, n._l.h);
-        for (const p of cs) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
-      } else {
-        x0 = Math.min(x0, n._l.x); y0 = Math.min(y0, n._l.y);
-        x1 = Math.max(x1, n._l.x + n._l.w); y1 = Math.max(y1, n._l.y + n._l.h);
-      }
-    };
-    const visit = (n) => {
-      addN(n);
-      for (const cid of n.children) { const k = page.nodes[cid]; if (k) visit(k); }
-    };
-    for (const tid of page.tops) { const t = page.nodes[tid]; if (t) visit(t); }
+      x0 = Math.min(x0, t._w.x); y0 = Math.min(y0, t._w.y);
+      x1 = Math.max(x1, t._w.x + t._w.w); y1 = Math.max(y1, t._w.y + t._w.h);
+    }
     if (!any) return { x: 0, y: 0, w: 800, h: 600 };
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
   }
@@ -583,151 +693,240 @@
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, any = false;
     for (const id of ids) {
       const n = page.nodes[id];
-      if (!n || !n._l) continue;
+      if (!n || !n._w) continue;
       any = true;
-      if (n.rotation || n.flipH || n.flipV) {
-        const cs = M.rotatedCorners(n, n._l.x, n._l.y, n._l.w, n._l.h);
-        for (const p of cs) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
-      } else {
-        x0 = Math.min(x0, n._l.x); y0 = Math.min(y0, n._l.y);
-        x1 = Math.max(x1, n._l.x + n._l.w); y1 = Math.max(y1, n._l.y + n._l.h);
-      }
+      x0 = Math.min(x0, n._w.x); y0 = Math.min(y0, n._w.y);
+      x1 = Math.max(x1, n._w.x + n._w.w); y1 = Math.max(y1, n._w.y + n._w.h);
     }
     return any ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
   }
 
-  // ------------------------------------------------------------- selection overlay
+  // ------------------------------------------------------------- selection overlay (screen space)
+  // Selection overlay drawn in SCREEN space. Single: OBB outline + 8 handles +
+  // rotate handle + size pill. Multi: dashed AABB + 8 handles + count badge.
+  // Compute single-select screen geometry from the SAME world corners
+  // used by hit-test and resize. Returns null if node has no resolved
+  // geometry yet (first frame, hidden).
+  function singleSelGeom(view, n) {
+    const W = global.World;
+    if (W && W.screenCorners) {
+      const corners = W.screenCorners(view, n);
+      if (corners) return { corners };
+    }
+    // Fallback: use _w AABB projected through view
+    if (!n._w) return null;
+    const z = view.zoom, ox = view.ox, oy = view.oy;
+    const b = n._w;
+    const corners = [
+      {x:b.x*z+ox,y:b.y*z+oy}, {x:(b.x+b.w)*z+ox,y:b.y*z+oy},
+      {x:(b.x+b.w)*z+ox,y:(b.y+b.h)*z+oy}, {x:b.x*z+ox,y:(b.y+b.h)*z+oy},
+    ];
+    return { corners };
+  }
+  function outwardNormal(a, b, center) {
+    const ex = b.x-a.x, ey = b.y-a.y;
+    const el = Math.hypot(ex,ey) || 1;
+    let nx = ey/el, ny = -ex/el; // CW-ordered edge → outward points this way
+    const mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+    if ((mx-center.x)*nx + (my-center.y)*ny < 0) { nx=-nx; ny=-ny; }
+    return { nx, ny };
+  }
+  function drawHandle(ctx, p, hs) {
+    ctx.beginPath();
+    ctx.rect(p.x - hs/2 + 0.5, p.y - hs/2 + 0.5, hs, hs);
+    ctx.fill(); ctx.stroke();
+  }
+  function drawRotateTarget(ctx, p) {
+    // Figma-style rotate dot: small white circle, no heavy outline
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3.5, 0, Math.PI*2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.strokeStyle = FIGMA_BLUE;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
   function drawSelection(ctx, view, ids, page, moving) {
     if (!ids.length) return;
+    const FIGMA_BLUE = '#0d99ff';
     ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const z = view.zoom;
-    // Build per-node screen rectangles (AABB for rotated nodes) and compute union.
+    // Screen-space overlay: reset the world transform but preserve the
+    // device-pixel-ratio scale installed by resizeCanvas, so CSS-pixel
+    // coordinates (clientX - rect.left) map correctly.
+    const dpr = (window.devicePixelRatio) || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Reset all state so nothing leaks from drawPage into overlay.
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+    ctx.fillStyle = FIGMA_BLUE; ctx.strokeStyle = FIGMA_BLUE;
+    ctx.lineWidth = 1; ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+    ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+    ctx.font = '10px Inter, -apple-system, Arial, sans-serif';
+
     const rects = [];
     for (const id of ids) {
       const n = page.nodes[id];
-      if (!n || !n._l) continue;
-      const corners = M.rotatedCorners(n, n._l.x, n._l.y, n._l.w, n._l.h).map(p => ({ x: p.x * z + view.ox, y: p.y * z + view.oy }));
-      const bb = M.obbAabb(corners);
-      rects.push({ node: n, corners, bb });
+      if (!n) continue;
+      const g = singleSelGeom(view, n);
+      if (!g) continue;
+      const bb = M.obbAabb(g.corners);
+      rects.push({ node: n, corners: g.corners, bb });
     }
     if (!rects.length) { ctx.restore(); return; }
+
+    // Union AABB in screen space
     const union = rects.reduce((a, r) => {
       const b = r.bb;
-      return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.max(a.x + a.w, b.x + b.w) - Math.min(a.x, b.x), h: Math.max(a.y + a.h, b.y + b.h) - Math.min(a.y, b.y) };
+      const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+      const x2 = Math.max(a.x+a.w, b.x+b.w), y2 = Math.max(a.y+a.h, b.y+b.h);
+      return { x, y, w: x2-x, h: y2-y };
     }, { x: Infinity, y: Infinity, w: 0, h: 0 });
 
-    // Single selection → draw rotated OBB outline (Figma-style).
+    // Hover state for rotate handle: App sets view._hoverRotate=true when the
+    // pointer is within the top-edge hover zone; default true for ~1.2s after
+    // selection so it's discoverable, then fades to hover-only.
+    const showRotate = view._hoverRotate !== false;
+
     if (rects.length === 1) {
       const { node, corners } = rects[0];
-      ctx.strokeStyle = '#0d99ff';
-      ctx.lineWidth = 1.5;
+      const [c0,c1,c2,c3] = corners;
+      const mid = (a,b) => ({x:(a.x+b.x)/2, y:(a.y+b.y)/2});
+      const center = { x:(c0.x+c2.x)/2, y:(c0.y+c2.y)/2 };
+      const topMid = mid(c0,c1), botMid = mid(c2,c3);
+
+      // OBB outline (1px Figma blue)
+      ctx.strokeStyle = FIGMA_BLUE;
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(corners[0].x, corners[0].y);
-      for (let i = 1; i < 4; i++) ctx.lineTo(corners[i].x, corners[i].y);
-      ctx.closePath();
-      ctx.stroke();
-      // 8 resize handles at corners + edge midpoints (in screen/rotated space)
-      const hs = 7;
-      const pts = [corners[0], { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 }, corners[1], { x: (corners[1].x + corners[2].x) / 2, y: (corners[1].y + corners[2].y) / 2 }, corners[2], { x: (corners[2].x + corners[3].x) / 2, y: (corners[2].y + corners[3].y) / 2 }, corners[3], { x: (corners[3].x + corners[0].x) / 2, y: (corners[3].y + corners[0].y) / 2 }];
-      const handleNames = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
-      for (let i = 0; i < pts.length; i++) {
-        const p = pts[i];
-        ctx.fillStyle = '#fff';
-        ctx.strokeStyle = '#0d99ff';
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.rect(p.x - hs / 2, p.y - hs / 2, hs, hs);
-        ctx.fill(); ctx.stroke();
+      ctx.moveTo(c0.x, c0.y);
+      ctx.lineTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.lineTo(c3.x, c3.y);
+      ctx.closePath(); ctx.stroke();
+
+      // 4 CORNER HANDLES ONLY — edge midpoints stay as invisible hit zones
+      // (matches user request; resize along one axis still works via handleAt
+      // which detects edge-zone hits, we just don't paint edge squares).
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = FIGMA_BLUE; ctx.lineWidth = 1;
+      for (const p of [c0, c1, c2, c3]) drawHandle(ctx, p, 7);
+
+      // Rotate handle: a small white dot ~20px outside the top edge, with a
+      // short connector line. Only drawn when the pointer is near the top
+      // edge (Figma behavior). Declare rh in outer scope so rot label below
+      // can reference it.
+      let rh = null;
+      if (showRotate) {
+        const nTop = outwardNormal(c0, c1, center);
+        const R_DIST = 20;
+        const CONNECTOR_START = 9;
+        const connectorStart = { x: topMid.x + nTop.nx*CONNECTOR_START, y: topMid.y + nTop.ny*CONNECTOR_START };
+        rh = { x: topMid.x + nTop.nx*R_DIST, y: topMid.y + nTop.ny*R_DIST };
+        ctx.strokeStyle = FIGMA_BLUE; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(connectorStart.x, connectorStart.y); ctx.lineTo(rh.x, rh.y); ctx.stroke();
+        drawRotateTarget(ctx, rh);
       }
-      // Rotate handle: small circle above the top edge midpoint.
-      const midTop = { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 };
-      const rot = node.rotation || 0;
-      // offset 20px outward along the edge's outward normal (top edge goes from c0 to c1, outward is -90° from edge direction)
-      const ex = corners[1].x - corners[0].x, ey = corners[1].y - corners[0].y;
-      const elen = Math.hypot(ex, ey) || 1;
-      const nx = -ey / elen, ny = ex / elen; // normal pointing "up" in rotated space
-      const rh = { x: midTop.x + nx * 22, y: midTop.y + ny * 22 };
-      ctx.strokeStyle = '#0d99ff';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.moveTo(midTop.x, midTop.y);
-      ctx.lineTo(rh.x, rh.y);
-      ctx.stroke();
-      ctx.fillStyle = '#fff';
-      ctx.beginPath();
-      ctx.arc(rh.x, rh.y, 5, 0, Math.PI * 2);
-      ctx.fill(); ctx.stroke();
-      // size label at bottom-center
-      ctx.font = '11px Inter, Arial, sans-serif';
-      const label = `${Math.round(node._l.w)} × ${Math.round(node._l.h)}`;
-      if (node.rotation) label; // could add angle but keep it simple
+
+      // Size pill — blue rounded rect below the outward-bottom edge.
+      const nBot = outwardNormal(c2, c3, center);
+      const label = `${Math.round(node.w)} × ${Math.round(node.h)}`;
       const lw = ctx.measureText(label).width;
-      const midBot = { x: (corners[2].x + corners[3].x) / 2, y: (corners[2].y + corners[3].y) / 2 };
+      const padX = 7, bh = 18, bw = lw + padX*2;
+      let anchor = botMid; let nx2 = nBot.nx, ny2 = nBot.ny;
+      if (ny2 < -0.3) { anchor = topMid; const fl = outwardNormal(c0,c1,center); nx2=fl.nx; ny2=fl.ny; }
+      const GAP = 8;
+      let bx = anchor.x - bw/2 + nx2*GAP;
+      let by = anchor.y - bh/2 + ny2*GAP;
+      const vw = view.w||9999, vh = view.h||9999;
+      if (bx + bw > vw - 8) bx = vw - bw - 8;
+      if (bx < 8) bx = 8;
+      if (by + bh > vh - 8) by = vh - bh - 8;
+      if (by < 28) by = 28;
+      ctx.fillStyle = FIGMA_BLUE;
+      roundRectPath(ctx, bx, by, bw, bh, 3); ctx.fill();
       ctx.fillStyle = '#fff';
-      ctx.fillRect(midBot.x - lw / 2 - 6, midBot.y + 8, lw + 12, 18);
-      ctx.fillStyle = '#0d99ff';
-      ctx.fillRect(midBot.x - lw / 2 - 6, midBot.y + 8, lw + 12, 1.5);
-      ctx.fillStyle = '#333';
-      ctx.textAlign = 'center';
-      ctx.fillText(label, midBot.x, midBot.y + 21);
-      ctx.textAlign = 'start';
-      // rotation tooltip: show angle near rotate handle when rotating
-      if (node._rotLabel) {
-        ctx.font = '11px Inter, Arial, sans-serif';
-        const at = `${Math.round(node.rotation * 180 / Math.PI)}°`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, bx + bw/2, by + bh/2 + 0.5);
+
+      if (node._rotLabel && showRotate && rh) {
+        const at = `${Math.round((node.rotation||0)*180/Math.PI)}°`;
         const aw = ctx.measureText(at).width;
         ctx.fillStyle = '#1e1e1e';
-        ctx.fillRect(rh.x - aw / 2 - 6, rh.y - 22, aw + 12, 16);
+        roundRectPath(ctx, rh.x - aw/2 - 6, rh.y - 22, aw + 12, 16, 3); ctx.fill();
         ctx.fillStyle = '#fff';
-        ctx.textAlign = 'center';
-        ctx.fillText(at, rh.x, rh.y - 10);
-        ctx.textAlign = 'start';
+        ctx.fillText(at, rh.x, rh.y - 14);
       }
+      ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
     } else {
-      // multi-selection: draw single AABB outline only (handles added in P0 multi-select task)
-      ctx.strokeStyle = '#0d99ff';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 3]);
-      ctx.strokeRect(union.x - 0.5, union.y - 0.5, union.w, union.h);
+      // Multi-selection: dashed AABB, 4 corner handles, rotate dot on hover.
+      ctx.strokeStyle = FIGMA_BLUE; ctx.lineWidth = 1;
+      ctx.setLineDash([4,3]);
+      ctx.strokeRect(union.x+0.5, union.y+0.5, union.w-1, union.h-1);
       ctx.setLineDash([]);
-      // label with count
-      ctx.font = '11px Inter, Arial, sans-serif';
       const label = `${ids.length} selected`;
       const tw = ctx.measureText(label).width;
-      ctx.fillStyle = 'rgba(13,153,255,0.95)';
-      ctx.fillRect(union.x, union.y - 20, tw + 10, 18);
-      ctx.fillStyle = '#fff';
-      ctx.fillText(label, union.x + 5, union.y - 7);
+      ctx.fillStyle = FIGMA_BLUE;
+      ctx.fillRect(union.x, union.y - 18, tw + 10, 16);
+      ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, union.x + 5, union.y - 10);
+      const u = union;
+      // 4 corners only
+      const pts = [
+        [u.x, u.y], [u.x+u.w, u.y], [u.x+u.w, u.y+u.h], [u.x, u.y+u.h],
+      ];
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = FIGMA_BLUE; ctx.lineWidth = 1;
+      for (const [px,py] of pts) drawHandle(ctx, {x:px,y:py}, 7);
+      if (showRotate) {
+        const topMidU = { x: u.x+u.w/2, y: u.y };
+        const rh = { x: topMidU.x, y: topMidU.y - 20 };
+        const endU = { x: topMidU.x, y: topMidU.y - 9 };
+        ctx.strokeStyle = FIGMA_BLUE; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(endU.x, endU.y); ctx.lineTo(rh.x, rh.y); ctx.stroke();
+        drawRotateTarget(ctx, rh);
+      }
+      ctx.textBaseline = 'alphabetic';
     }
     ctx.restore();
+  }
+  function roundRectPath(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.lineTo(x+w-r, y);
+    ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+    ctx.lineTo(x+w, y+h-r);
+    ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+    ctx.lineTo(x+r, y+h);
+    ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+    ctx.lineTo(x, y+r);
+    ctx.quadraticCurveTo(x, y, x+r, y);
+    ctx.closePath();
   }
 
   function drawMarquee(ctx, rect) {
     if (!rect) return;
     ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = 'rgba(13,153,255,0.08)';
     ctx.strokeStyle = 'rgba(13,153,255,0.8)';
     ctx.lineWidth = 1;
     ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w, rect.h);
+    ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
     ctx.restore();
   }
 
-  // dev mode: dimension lines around the selection
   function drawDevMeasure(ctx, view, page, doc, selIds) {
     const sel = selIds.map(id => page.nodes[id]).filter(Boolean);
     if (!sel.length) return;
     const zoom = view.zoom;
-    const toS = (p) => ({ x: p.x * zoom + view.ox, y: p.y * zoom + view.oy });
     ctx.save();
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.font = '11px Inter, sans-serif';
     ctx.textBaseline = 'middle';
     const label = (txt, x, y) => {
       const wpx = ctx.measureText(txt).width + 8;
       ctx.fillStyle = '#0d99ff';
-      ctx.fillRect(x - wpx / 2, y - 8, wpx, 16);
+      ctx.fillRect(x - wpx/2, y - 8, wpx, 16);
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
       ctx.fillText(txt, x, y + 0.5);
@@ -735,21 +934,21 @@
     };
     const line = (a, b) => { ctx.strokeStyle = 'rgba(13,153,255,0.8)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); };
     for (const n of sel) {
-      const L = n._l;
-      if (!L) continue;
-      const bb = M.obbAabb(M.rotatedCorners(n, L.x, L.y, L.w, L.h).map(p => toS(p)));
-      const tl = { x: bb.x, y: bb.y }, br = { x: bb.x + bb.w, y: bb.y + bb.h };
-      const midX = (tl.x + br.x) / 2, midY = (tl.y + br.y) / 2;
+      const bb = n._w;
+      if (!bb) continue;
+      const tl = { x: bb.x*zoom + view.ox, y: bb.y*zoom + view.oy };
+      const br = { x: (bb.x+bb.w)*zoom + view.ox, y: (bb.y+bb.h)*zoom + view.oy };
+      const midX = (tl.x+br.x)/2, midY = (tl.y+br.y)/2;
       line({ x: tl.x, y: tl.y - 24 }, { x: br.x, y: tl.y - 24 });
-      label(Math.round(L.w) + '', midX, tl.y - 24);
+      label(Math.round(n.w)+'', midX, tl.y - 24);
       line({ x: tl.x - 24, y: tl.y }, { x: tl.x - 24, y: br.y });
-      label(Math.round(L.h) + '', tl.x - 24, midY);
-      label('x ' + Math.round(L.x) + '  y ' + Math.round(L.y), midX, br.y + 22);
+      label(Math.round(n.h)+'', tl.x - 24, midY);
+      label('x '+Math.round(n._w.x)+'  y '+Math.round(n._w.y), midX, br.y + 22);
     }
     ctx.restore();
   }
 
-  // ---- view chrome: rulers, grid, smart guides
+  // ------------------------------------------------------------- view chrome
   function rulerStep(zoom) {
     const steps = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
     for (const s of steps) if (s * zoom >= 60) return s;
@@ -759,11 +958,14 @@
     if (!view.rulers) return;
     const RULER = 22, z = view.zoom, ox = view.ox, oy = view.oy;
     ctx.save();
-    ctx.fillStyle = '#f5f5f6';
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Dark-theme ruler chrome (matches #2c2c2c panels)
+    ctx.fillStyle = '#2c2c2c';
     ctx.fillRect(0, 0, w, RULER);
     ctx.fillRect(0, RULER, RULER, h - RULER);
     ctx.fillRect(0, 0, RULER, RULER);
-    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.strokeStyle = '#1a1a1a';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0.5, RULER + 0.5); ctx.lineTo(w, RULER + 0.5);
@@ -773,9 +975,9 @@
     const sub = step / 5;
     ctx.font = '9px Inter, "Helvetica Neue", Arial, sans-serif';
     ctx.fillStyle = '#8a8a93';
-    ctx.strokeStyle = '#b9b9c0';
+    ctx.strokeStyle = '#555';
     ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-    let i0 = Math.ceil((-ox / z) / sub - 1e-9);
+    let i0 = Math.ceil((-ox/z)/sub - 1e-9);
     for (let i = i0; ; i++) {
       const v = i * sub;
       const sx = v * z + ox;
@@ -788,7 +990,7 @@
       if (major) ctx.fillText(String(Math.round(v)), sx + 3, RULER - 1);
     }
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    let j0 = Math.ceil((-oy / z) / sub - 1e-9);
+    let j0 = Math.ceil((-oy/z)/sub - 1e-9);
     for (let j = j0; ; j++) {
       const v = j * sub;
       const sy = v * z + oy;
@@ -801,18 +1003,19 @@
       if (major) ctx.fillText(String(Math.round(v)), RULER + 3, sy + 1);
     }
     ctx.fillStyle = '#5a5a63';
-    const oxS = ox, oyS = oy;
-    if (oxS > RULER + 2 && oxS < w) {
-      ctx.beginPath(); ctx.moveTo(oxS, RULER + 1); ctx.lineTo(oxS - 4, RULER + 7); ctx.lineTo(oxS + 4, RULER + 7); ctx.closePath(); ctx.fill();
+    if (ox > RULER + 2 && ox < w) {
+      ctx.beginPath(); ctx.moveTo(ox, RULER + 1); ctx.lineTo(ox - 4, RULER + 7); ctx.lineTo(ox + 4, RULER + 7); ctx.closePath(); ctx.fill();
     }
-    if (oyS > RULER + 2 && oyS < h) {
-      ctx.beginPath(); ctx.moveTo(RULER + 1, oyS); ctx.lineTo(RULER + 7, oyS - 4); ctx.lineTo(RULER + 7, oyS + 4); ctx.closePath(); ctx.fill();
+    if (oy > RULER + 2 && oy < h) {
+      ctx.beginPath(); ctx.moveTo(RULER + 1, oy); ctx.lineTo(RULER + 7, oy - 4); ctx.lineTo(RULER + 7, oy + 4); ctx.closePath(); ctx.fill();
     }
     ctx.restore();
   }
   function drawSnapGuides(ctx, view, guides) {
     if (!guides || !guides.length) return;
     ctx.save();
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.translate(view.ox, view.oy);
     ctx.scale(view.zoom, view.zoom);
     ctx.strokeStyle = '#eb1478';
@@ -830,9 +1033,11 @@
     if (!step || !(step > 0)) return;
     const z = view.zoom, ox = view.ox, oy = view.oy, w = view.w, h = view.h;
     if (step * z < 4) return;
-    const i0 = Math.ceil((-ox / z) / step - 1e-9), i1 = Math.floor((w - ox) / z / step + 1e-9);
-    const j0 = Math.ceil((-oy / z) / step - 1e-9), j1 = Math.floor((h - oy) / z / step + 1e-9);
+    const i0 = Math.ceil((-ox/z)/step - 1e-9), i1 = Math.floor((w-ox)/z/step + 1e-9);
+    const j0 = Math.ceil((-oy/z)/step - 1e-9), j1 = Math.floor((h-oy)/z/step + 1e-9);
     ctx.save();
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.lineWidth = 1;
     for (let i = i0; i <= i1; i++) {
       const sx = i * step * z + ox;
@@ -852,7 +1057,7 @@
     measureText, textLines, fontSpec, textBoxWidth, setTextCtx,
     drawPaints, drawStroke, drawShadows,
     renderRegion, pageBounds, selectionBounds,
-    resolvedColor, numToken, imgFor,
+    resolvedColor, imgFor,
     drawRulers, drawSnapGuides, drawGridLines, rulerStep,
     applyStrokeStyle,
   };

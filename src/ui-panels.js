@@ -628,8 +628,8 @@
       const html = E.html(doc, page, n);
       const spec = [
         ['Name', n.name],
-        ['Size', Math.round(n._l ? n._l.w : n.w) + ' × ' + Math.round(n._l ? n._l.h : n.h)],
-        ['Position', Math.round(n._l ? n._l.x : n.x) + ', ' + Math.round(n._l ? n._l.y : n.y)],
+        ['Size', Math.round(n.w) + ' × ' + Math.round(n.h)],
+        ['Position', Math.round(n._w ? n._w.x : n.x) + ', ' + Math.round(n._w ? n._w.y : n.y)],
         ['Type', n.type + (n.al ? ' · auto-layout ' + n.al.dir : '')],
         ['Fill', n.fills && n.fills[0] ? (n.fills[0].type === 'solid' ? n.fills[0].color : n.fills[0].type) : '—'],
         ['Opacity', Math.round((n.opacity == null ? 1 : n.opacity) * 100) + '%'],
@@ -1204,7 +1204,7 @@
           n.als[key] = b.dataset.sv;
           if (n.als[key] === 'fill') n.als.grow = 1; else if (n.als[key] !== 'fill') n.als.grow = 0;
           if (n.als[key] === 'fixed') {
-            if (key === 'w') n.w = n._l ? n._l.w : n.w; else n.h = n._l ? n._l.h : n.h;
+            if (key === 'w') n.w = n.w; else n.h = n.h;
           }
           P.refreshInspector();
         });
@@ -1430,39 +1430,82 @@
       const v = App.view;
       const el = document.createElement('div');
       el.className = 'pf-menu view-menu';
-      const chk = Ico('check',{size:10}) + ' ';
+      const chk = k => k === v.zoomPct || false;
+      const pct = Math.round(v.zoom * 100);
+      const chkS = on => on ? (Ico('check',{size:10}) + ' ') : '';
+      const zPct = z => `${Math.round(z*100)}%`;
       el.innerHTML = `
-        <div class="pf-title">View</div>
-        <button data-v="rulers">${v.rulers ? chk : ''}Show rulers</button>
-        <button data-v="grid">${v.grid ? chk : ''}Show grid</button>
+        <div class="pf-title">Zoom</div>
+        <button data-z="fit">${Ico('zoomfit',{size:12})} Zoom to fit all <span class="kbd">⇧1</span></button>
+        <button data-z="sel">${Ico('frame',{size:12})} Zoom to selection <span class="kbd">⇧2</span></button>
+        <button data-z="100">Zoom to 100% <span class="kbd">⇧0</span></button>
+        <hr>
+        ${[0.25,0.5,1,2,4,8].map(z => `<button data-z="${z}">${chkS(Math.abs(v.zoom-z)<0.01)}${zPct(z)}</button>`).join('')}
+        <hr>
+        <div class="pf-title">Show</div>
+        <button data-v="rulers">${chkS(v.rulers)}Rulers <span class="kbd">⇧R</span></button>
+        <button data-v="grid">${chkS(!!v.grid)}Grid <span class="kbd">⇧G</span></button>
         <div class="pf-gridsize" title="Grid spacing (world px)">
-          ${[10,20,50].map(s => `<button data-gs="${s}" class="${v.grid===s?'active':''}">${s}</button>`).join('')}
+          ${[10,20,50,100].map(s => `<button data-gs="${s}" class="${v.grid===s?'active':''}">${s}</button>`).join('')}
         </div>
-        <button data-v="snap">${v.snap ? chk : ''}Snap on (smart guides)</button>
-        <button data-v="magnet" title="Snap only while holding Shift">${Ico('magnet',{size:12})} Magnet mode</button>`;
+        <button data-v="snap">${chkS(v.snap)}Snap to objects <span class="kbd">⇧⌘'</span></button>
+        <button data-v="magnet" title="Snap only while holding Shift">${Ico('magnet',{size:12})} Magnet mode</button>
+        <hr>
+        <div class="pf-title">Canvas color</div>
+        <div class="pf-colorswatch">
+          ${['#1e1e1e','#2c2c2c','#383838','#4a4a4a','#b5b5b5','#e5e5e5','#ffffff','#0d99ff','#ff4d4d','#ffc700','#7b61ff','#1abc4e'].map(c=>`<button data-bg="${c}" class="bg-swatch${(v.canvasColor||'#383838').toLowerCase()===c?' on':''}" style="background:${c}" title="${c}"></button>`).join('')}
+          <input type="color" data-bg-custom value="${v.canvasColor||'#383838'}" title="Custom color" class="bg-custom">
+        </div>
+        <div class="pf-title">Pixel preview</div>
+        <button data-v="pixel">${chkS(v.pixelPreview !== false)}Show pixel grid (≥ 800%)</button>`;
       if (x == null || y == null) {
         const r = document.getElementById('ed-view').getBoundingClientRect();
         x = r.right; y = r.bottom + 4;
       }
-      el.style.left = Math.min(x, innerWidth - 280) + 'px';
-      el.style.top = Math.min(y, innerHeight - 240) + 'px';
+      el.style.minWidth = '240px';
+      el.style.left = Math.min(x, innerWidth - 260) + 'px';
+      el.style.top = Math.min(y, innerHeight - 520) + 'px';
       this._menu(el);
-      const refresh = () => {
-        el.remove();
-        App.markDirty();
-      };
+      const close = () => el.remove();
       el.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => {
         const k = b.dataset.v;
         if (k === 'rulers') v.rulers = !v.rulers;
         else if (k === 'snap') v.snap = !v.snap;
         else if (k === 'magnet') v.magnet = !v.magnet;
         else if (k === 'grid') v.grid = v.grid ? null : (v.gridSize || 10);
-        refresh();
+        else if (k === 'pixel') v.pixelPreview = !v.pixelPreview;
+        App.syncViewToggles();
+        App.markDirty();
+        close();
       }));
       el.querySelectorAll('[data-gs]').forEach(b => b.addEventListener('click', () => {
         v.gridSize = +b.dataset.gs;
-        v.grid = v.gridSize; // picking a spacing turns the grid on
-        refresh();
+        v.grid = v.gridSize;
+        App.syncViewToggles();
+        App.markDirty();
+        close();
+      }));
+      el.querySelectorAll('[data-bg]').forEach(b => b.addEventListener('click', () => {
+        v.canvasColor = b.dataset.bg;
+        App.syncViewToggles();
+        App._redrawLight && App._redrawLight();
+        close();
+      }));
+      const bgCustom = el.querySelector('[data-bg-custom]');
+      if (bgCustom) bgCustom.addEventListener('input', () => {
+        v.canvasColor = bgCustom.value;
+        App._redrawLight && App._redrawLight();
+      });
+      bgCustom && bgCustom.addEventListener('change', close);
+      el.querySelectorAll('[data-z]').forEach(b => b.addEventListener('click', () => {
+        const z = b.dataset.z;
+        const rect = App.canvas.getBoundingClientRect();
+        const cx = rect.width / 2, cy = rect.height / 2;
+        close();
+        if (z === 'fit') App.zoomToFit();
+        else if (z === 'sel') App.zoomToSelection();
+        else if (z === '100') App.zoomAt(cx, cy, 1 / App.view.zoom);
+        else App.zoomAt(cx, cy, parseFloat(z) / App.view.zoom);
       }));
     },
     exportMenu(x, y) {
@@ -1518,7 +1561,7 @@
             if (App.sel.length === 1) svg = Svg.renderNode(doc, page, page.nodes[App.sel[0]]);
             else {
               let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-              for (const id of App.sel) { const nd = page.nodes[id]; if (!nd || !nd._l) continue; minX = Math.min(minX, nd._l.x); minY = Math.min(minY, nd._l.y); maxX = Math.max(maxX, nd._l.x + nd._l.w); maxY = Math.max(maxY, nd._l.y + nd._l.h); }
+              for (const id of App.sel) { const nd = page.nodes[id]; if (!nd || !nd._l) continue; minX = Math.min(minX, nd._w.x); minY = Math.min(minY, nd._w.y); maxX = Math.max(maxX, nd._w.x + nd._w.w); maxY = Math.max(maxY, nd._w.y + nd._w.h); }
               const body = [];
               for (const id of App.sel) { const nd = page.nodes[id]; if (nd) body.push(Svg.renderNode(doc, page, nd).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '')); }
               svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(maxX - minX)}" height="${Math.ceil(maxY - minY)}" viewBox="${minX} ${minY} ${Math.ceil(maxX - minX)} ${Math.ceil(maxY - minY)}">\n${body.join('\n')}\n</svg>`;
@@ -1527,7 +1570,7 @@
             App.toast('Exported SVG');
           } else {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            for (const tid of page.tops) { const nd = page.nodes[tid]; if (!nd || !nd._l) continue; M.forEachNode(page, nd, (c) => { if (!c._l) return; minX = Math.min(minX, c._l.x); minY = Math.min(minY, c._l.y); maxX = Math.max(maxX, c._l.x + c._l.w); maxY = Math.max(maxY, c._l.y + c._l.h); }); }
+            for (const tid of page.tops) { const nd = page.nodes[tid]; if (!nd || !nd._l) continue; M.forEachNode(page, nd, (c) => { if (!c._l) return; minX = Math.min(minX, c._w.x); minY = Math.min(minY, c._w.y); maxX = Math.max(maxX, c._w.x + c._w.w); maxY = Math.max(maxY, c._w.y + c._w.h); }); }
             if (!isFinite(minX)) { App.toast('Nothing to export'); return; }
             const body = page.tops.map(tid => { const nd = page.nodes[tid]; return nd ? Svg.renderNode(doc, page, nd).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '') : ''; }).join('\n');
             svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(maxX - minX)}" height="${Math.ceil(maxY - minY)}" viewBox="${minX} ${minY} ${Math.ceil(maxX - minX)} ${Math.ceil(maxY - minY)}">\n${body}\n</svg>`;
@@ -1636,7 +1679,7 @@
         if (c === 'ungroup') { App.sel = ids.slice(); App.ungroup(); return; }
         if (c === 'frame-sel') {
           let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-          for (const id of ids) { const k = page.nodes[id]; if (!k || !k._l) continue; x0 = Math.min(x0, k._l.x); y0 = Math.min(y0, k._l.y); x1 = Math.max(x1, k._l.x + k._l.w); y1 = Math.max(y1, k._l.y + k._l.h); }
+          for (const id of ids) { const k = page.nodes[id]; if (!k || !k._l) continue; x0 = Math.min(x0, k._w.x); y0 = Math.min(y0, k._w.y); x1 = Math.max(x1, k._w.x + k._w.w); y1 = Math.max(y1, k._w.y + k._w.h); }
           if (!isFinite(x0)) return;
           App.history.begin(doc);
           const f = M.makeNode('frame', { x: x0, y: y0, w: x1 - x0, h: y1 - y0, name: 'Frame' });

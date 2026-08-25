@@ -19,7 +19,10 @@
     tool: 'move',
     // rulers/grid/snap are session view state (not document state): they
     // persist across files in a session but never into the saved doc.
-    view: { zoom: 1, ox: 80, oy: 80, rulers: true, grid: null, gridSize: 10, snap: true, magnet: false },
+    // view.cam* are the true camera; view.zoom/ox/oy on App is the live copy.
+    // canvasColor: canvas background (like Figma: light/dark/black/custom).
+    // pixelPreview: when true, show faint 1px pixel grid at ≥800% zoom.
+    view: { zoom: 1, ox: 80, oy: 80, rulers: true, grid: null, gridSize: 10, snap: true, magnet: false, pixelPreview: true, canvasColor: '#383838' },
     marquee: null,
     space: false,
     history: new M.History(),
@@ -115,9 +118,13 @@
       const ctx = this.ctx;
       if (!ctx) return;
       const rect = c.getBoundingClientRect();
-      R.drawPage(ctx, this.page, this.doc, { zoom: this.view.zoom, ox: this.view.ox, oy: this.view.oy, w: rect.width, h: rect.height, grid: this.view.grid });
+      const v = this.view;
+      R.drawPage(ctx, this.page, this.doc, { zoom: v.zoom, ox: v.ox, oy: v.oy, w: rect.width, h: rect.height, grid: v.grid, pixelPreview: v.pixelPreview, canvasColor: v.canvasColor });
+      // Always draw proper Figma-style selection chrome (OBB, 4 corners,
+      // hover-gated rotate dot, size pill). Dev mode adds distance labels
+      // on TOP of it — never replaces it.
+      R.drawSelection(ctx, this.view, this.sel, this.page);
       if (this.devMode) R.drawDevMeasure(ctx, this.view, this.page, this.doc, this.sel);
-      else R.drawSelection(ctx, this.view, this.sel, this.page);
       if (this.marquee) R.drawMarquee(ctx, this.marquee);
       this.drawEmptyState(ctx);
       this.drawPenOverlay(ctx);
@@ -271,7 +278,9 @@
       ed.querySelector('#ed-versions').addEventListener('click', (e) => { e.stopPropagation(); global.Panels.versionsMenu(e.clientX, e.clientY); });
       ed.querySelector('#ed-plugins').addEventListener('click', (e) => { e.stopPropagation(); global.Panels.pluginsModal(); });
       this.setTool('move');
-      this.syncViewToggles();
+      // syncViewToggles sets the canvas-wrap background to match canvasColor.
+      // Canvas element is added synchronously by buildChrome, so run next frame.
+      requestAnimationFrame(() => this.syncViewToggles());
       global.Panels.renderPages();
       global.Panels.refreshLayers();
       global.Panels.refreshInspector();
@@ -295,6 +304,10 @@
       on('ed-rulers', this.view.rulers);
       on('ed-grid', !!this.view.grid);
       on('ed-snap', this.view.snap);
+      // Sync canvas background color to the wrapper CSS var so any uncovered
+      // area (before first canvas paint, during resizes) matches.
+      const wrap = document.querySelector('.ed-canvas-wrap');
+      if (wrap && this.view.canvasColor) wrap.style.background = this.view.canvasColor;
     },
     renderModes() {
       const el = document.getElementById('ed-modes');
@@ -337,11 +350,82 @@
     },
 
     // ------------------------------------------------------------- selection
+    _rotateHoverTimer: null,
     setSel(ids) {
       this.sel = ids;
       global.Collab.sendSelection(this.sel);
       global.Panels.refreshInspector();
+      // Figma: rotate dot is visible briefly after selecting so users
+      // discover it, then fades to hover-only.
+      clearTimeout(this._rotateHoverTimer);
+      if (ids.length >= 1) {
+        this.view._hoverRotate = true;
+        this._rotateHoverTimer = setTimeout(() => {
+          this.view._hoverRotate = false;
+          this.markDirty();
+        }, 1500);
+      } else {
+        this.view._hoverRotate = false;
+      }
       this.markDirty();
+    },
+
+    // Update rotate hover state based on pointer position (screen px).
+    // Returns true when pointer is in the top-edge rotate-hover zone.
+    // Figma: rotate handle appears when the cursor is near the TOP edge
+    // of the selection (anywhere along that edge, not just the midpoint).
+    _updateRotateHover(mx, my) {
+      if (this.sel.length < 1) { this.view._hoverRotate = false; return false; }
+      // When actively dragging rotate, keep it visible.
+      if (this._drag && (this._drag.kind === 'rotate' || this._drag.kind === 'rotate-multi')) {
+        this.view._hoverRotate = true; return true;
+      }
+      const W = global.World;
+      let inZone = false;
+      if (this.sel.length === 1) {
+        const n = this.page.nodes[this.sel[0]];
+        if (!n || !n._wc) return false;
+        const corners = (W && W.screenCorners)
+          ? W.screenCorners(this.view, n)
+          : n._wc.map(p => ({ x: p.x*this.view.zoom + this.view.ox, y: p.y*this.view.zoom + this.view.oy }));
+        const c0 = corners[0], c1 = corners[1];
+        const center = { x: (corners[0].x + corners[2].x) * 0.5, y: (corners[0].y + corners[2].y) * 0.5 };
+        // Top edge: from c0 to c1. Compute distance to segment.
+        const ex = c1.x - c0.x, ey = c1.y - c0.y;
+        const elen2 = ex*ex + ey*ey;
+        const elen = Math.sqrt(elen2) || 1;
+        // outward normal
+        let nx = ey/elen, ny = -ex/elen;
+        const mid = { x: (c0.x+c1.x)/2, y: (c0.y+c1.y)/2 };
+        if ((mid.x - center.x)*nx + (mid.y - center.y)*ny < 0) { nx=-nx; ny=-ny; }
+        // project (mx,my) onto the edge line
+        const t = elen2 > 0 ? ((mx - c0.x)*ex + (my - c0.y)*ey) / elen2 : 0;
+        const tClamped = Math.max(-0.05, Math.min(1.05, t));
+        const px = c0.x + tClamped*ex, py = c0.y + tClamped*ey;
+        const distFromSegment = Math.hypot(mx - px, my - py);
+        // signed distance outward from edge (negative = outside the shape)
+        const signedOut = (mx - mid.x)*nx + (my - mid.y)*ny;
+        // Hover zone: 6px inside to 32px outside the edge, within edge bounds
+        // (plus 5% overhang on each end)
+        inZone = signedOut > -6 && signedOut < 34 && distFromSegment < 20;
+      } else {
+        // multi-select: AABB
+        let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+        for (const id of this.sel) {
+          const n = this.page.nodes[id]; if(!n||!n._w) continue;
+          const b = n._w;
+          x0=Math.min(x0,b.x); y0=Math.min(y0,b.y);
+          x1=Math.max(x1,b.x+b.w); y1=Math.max(y1,b.y+b.h);
+        }
+        if (isFinite(x0)) {
+          const z = this.view.zoom, ox = this.view.ox, oy = this.view.oy;
+          const sx0 = x0*z+ox, sx1 = x1*z+ox;
+          const sy0 = y0*z+oy;
+          inZone = mx >= sx0 - 10 && mx <= sx1 + 10 && my >= sy0 - 34 && my <= sy0 + 10;
+        }
+      }
+      this.view._hoverRotate = inZone;
+      return inZone;
     },
 
     // ------------------------------------------------------------- canvas binding
@@ -375,7 +459,7 @@
         e.preventDefault();
         const p = this.toWorld(e);
         const hit = this.hitTest(p);
-        if (hit && !this.sel.includes(hit.id)) { this.sel = [hit.id]; this.markDirty(); }
+        if (hit && !this.sel.includes(hit.id)) { this.setSel([hit.id]); }
         global.Panels.contextMenu(e.clientX, e.clientY, this.sel.length ? this.sel : [hit && hit.id].filter(Boolean));
       });
       // Drag & drop image import (drop anywhere on canvas → placed at drop point)
@@ -449,7 +533,18 @@
       c.height = Math.max(1, rect.height * dpr);
       c.style.width = rect.width + 'px';
       c.style.height = rect.height + 'px';
-      if (this.ctx) this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (this.ctx) {
+        // Setting c.width resets the backing store to transparent black. If
+        // we don't immediately paint the canvas color, the user sees a 1-frame
+        // flash of "empty canvas" before markDirty's rAF runs — that is the
+        // infamous zoom/resize flicker. Fill the canvas color right away.
+        const ctx = this.ctx;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = (this.view && this.view.canvasColor) || '#383838';
+        ctx.fillRect(0, 0, rect.width, rect.height);
+      }
     },
     toWorld(e) {
       const rect = this.canvas.getBoundingClientRect();
@@ -460,39 +555,27 @@
     // ------------------------------------------------------------- hit test
     hitTest(p) {
       const page = this.page;
-      // Compute world-AABB clip for frames that clip content (rotation-aware).
+      const W = global.World;
       const frameClips = (n) => {
-        if (!(n.type === 'frame' && n.clips)) return true;
-        const L = n._l;
-        if (!L) return false;
-        if (n.rotation || n.flipH || n.flipV) {
-          const cs = M.rotatedCorners(n, L.x, L.y, L.w, L.h);
-          let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-          for (const c of cs) { x0 = Math.min(x0, c.x); y0 = Math.min(y0, c.y); x1 = Math.max(x1, c.x); y1 = Math.max(y1, c.y); }
-          return p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
-        }
-        return p.x >= L.x && p.x <= L.x + L.w && p.y >= L.y && p.y <= L.y + L.h;
+        if (!(n.type === 'frame' && n.clips) || !n._w) return true;
+        return p.x >= n._w.x - 1 && p.x <= n._w.x + n._w.w + 1 && p.y >= n._w.y - 1 && p.y <= n._w.y + n._w.h + 1;
       };
-      const pointInLocal = (n, wp) => {
-        // Transform world point into node-local coords (inverse of drawNode).
-        const L = n._l;
-        if (!L || n.visible === false) return false;
-        const cx = L.x + L.w / 2, cy = L.y + L.h / 2;
-        let dx = wp.x - cx, dy = wp.y - cy;
-        const rot = -(n.rotation || 0);
-        if (rot) { const c = Math.cos(rot), s = Math.sin(rot); const rx = dx * c - dy * s, ry = dx * s + dy * c; dx = rx; dy = ry; }
-        if (n.flipH) dx = -dx;
-        if (n.flipV) dy = -dy;
-        const lx = dx + L.w / 2, ly = dy + L.h / 2;
+      const pointInNode = (n) => {
+        if (n.visible === false || !n._wt) return false;
+        const lp = W.worldToLocal(n, p.x, p.y);
+        if (!lp) return false;
+        const { x: lx, y: ly } = lp;
+        const w = n.w, h = n.h;
+        if (lx < -0.5 || lx > w + 0.5 || ly < -0.5 || ly > h + 0.5) return false;
         if (n.type === 'ellipse') {
-          const rx = lx - L.w / 2, ry = ly - L.h / 2;
-          return (rx * rx) / ((L.w / 2) * (L.w / 2)) + (ry * ry) / ((L.h / 2) * (L.h / 2)) <= 1.02;
+          const rx = lx - w/2, ry = ly - h/2;
+          return (rx*rx)/((w/2)*(w/2)) + (ry*ry)/((h/2)*(h/2)) <= 1.02;
         }
         if (n.type === 'line') {
-          const pad = Math.max(4, n.stroke.width || 1) / this.view.zoom;
-          return lx >= -pad && lx <= L.w + pad && ly >= -pad && ly <= L.h + pad;
+          const pad = Math.max(4, (n.stroke && n.stroke.width) || 1) / this.view.zoom;
+          return Math.abs(ly - h/2) <= pad && lx >= -pad && lx <= w + pad;
         }
-        return lx >= 0 && lx <= L.w && ly >= 0 && ly <= L.h;
+        return true;
       };
       const visit = (n) => {
         for (let i = n.children.length - 1; i >= 0; i--) {
@@ -502,10 +585,10 @@
           const r = visit(k);
           if (r) return r;
         }
-        return pointInLocal(n, p) ? n : null;
+        return pointInNode(n) ? n : null;
       };
       for (let i = page.tops.length - 1; i >= 0; i--) {
-        const t = page.tops[i] ? page.nodes[page.tops[i]] : null;
+        const t = page.nodes[page.tops[i]];
         if (!t) continue;
         const r = visit(t);
         if (r) return r;
@@ -515,29 +598,67 @@
     handleAt(e) {
       if (this.sel.length !== 1) return null;
       const n = this.page.nodes[this.sel[0]];
-      if (!n || !n._l) return null;
+      if (!n || !n._wc) return null;
       const rect = this.canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-      const z = this.view.zoom;
-      const corners = M.rotatedCorners(n, n._l.x, n._l.y, n._l.w, n._l.h).map(p => ({ x: p.x * z + this.view.ox, y: p.y * z + this.view.oy }));
-      // 8 resize handles: corners + edge midpoints in screen space
+      const W = global.World;
+      // Use world corners projected through the view transform — the SAME
+      // geometry drawSelection uses. No parallel math.
+      const corners = (W && W.screenCorners)
+        ? W.screenCorners(this.view, n)
+        : n._wc.map(p => ({ x: p.x*this.view.zoom + this.view.ox, y: p.y*this.view.zoom + this.view.oy }));
       const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
       const c0 = corners[0], c1 = corners[1], c2 = corners[2], c3 = corners[3];
-      const pts = [
-        ['nw', c0.x, c0.y], ['n', mid(c0, c1).x, mid(c0, c1).y], ['ne', c1.x, c1.y],
-        ['e', mid(c1, c2).x, mid(c1, c2).y], ['se', c2.x, c2.y],
-        ['s', mid(c2, c3).x, mid(c2, c3).y], ['sw', c3.x, c3.y], ['w', mid(c3, c0).x, mid(c3, c0).y],
+      // 4 CORNER HANDLES ONLY — user requested Figma-style: 4 corners.
+      // Edge midpoints are INVISIBLE hit zones (no square painted, but you
+      // can still drag-resize near the edge line for one-axis resize).
+      const cornerPts = [
+        ['nw', c0.x, c0.y], ['ne', c1.x, c1.y],
+        ['se', c2.x, c2.y], ['sw', c3.x, c3.y],
       ];
-      for (const [name, x, y] of pts) {
-        if (Math.abs(mx - x) <= 7 && Math.abs(my - y) <= 7) return { name, node: n, kind: 'resize' };
+      // Corner handles are 7px white squares — hit radius 9px (Figma-feel:
+      // slightly larger than visual, forgiving).
+      for (const [name, x, y] of cornerPts) {
+        if (Math.abs(mx - x) <= 9 && Math.abs(my - y) <= 9) return { name, node: n, kind: 'resize' };
       }
-      // Rotate handle: 22px outward from top-edge midpoint along the edge's outward normal.
+      // Invisible edge zones for one-axis resize. We check DISTANCE TO EDGE
+      // SEGMENT (not just midpoint) so you can n-resize anywhere along the
+      // top edge like in Figma.
+      const edges = [
+        ['n', c0, c1], ['e', c1, c2], ['s', c2, c3], ['w', c3, c0],
+      ];
+      for (const [name, a, b] of edges) {
+        const ex2 = b.x - a.x, ey2 = b.y - a.y;
+        const elen2 = ex2*ex2 + ey2*ey2;
+        if (elen2 < 1) continue;
+        let t = ((mx - a.x)*ex2 + (my - a.y)*ey2) / elen2;
+        t = Math.max(0, Math.min(1, t));
+        const px = a.x + t*ex2, py = a.y + t*ey2;
+        const d = Math.hypot(mx - px, my - py);
+        if (d <= 5) return { name, node: n, kind: 'resize' };
+      }
+      // Rotate handle: 20px outward from top edge (matches renderer R_DIST=20).
+      // We also check via segment distance, not just point-to-dot, so the
+      // connector line is grabbable too.
       const topMid = mid(c0, c1);
+      const center = { x: (c0.x + c2.x) * 0.5, y: (c0.y + c2.y) * 0.5 };
       const ex = c1.x - c0.x, ey = c1.y - c0.y;
       const elen = Math.hypot(ex, ey) || 1;
-      const nx = -ey / elen, ny = ex / elen;
-      const rh = { x: topMid.x + nx * 22, y: topMid.y + ny * 22 };
-      if (Math.abs(mx - rh.x) <= 8 && Math.abs(my - rh.y) <= 8) return { name: 'rotate', node: n, kind: 'rotate' };
+      let nx = ey / elen, ny = -ex / elen;
+      if ((topMid.x - center.x) * nx + (topMid.y - center.y) * ny < 0) { nx = -nx; ny = -ny; }
+      const rh = { x: topMid.x + nx * 20, y: topMid.y + ny * 20 };
+      // Distance from mouse to rotate dot
+      if (Math.hypot(mx - rh.x, my - rh.y) <= 9) return { name: 'rotate', node: n, kind: 'rotate' };
+      // Distance to the connector segment from 9px out (start) to 20px out (dot)
+      const cs = { x: topMid.x + nx * 9, y: topMid.y + ny * 9 };
+      const cex = rh.x - cs.x, cey = rh.y - cs.y;
+      const clen2 = cex*cex + cey*cey;
+      if (clen2 > 1) {
+        let tc = ((mx - cs.x)*cex + (my - cs.y)*cey) / clen2;
+        tc = Math.max(-0.1, Math.min(1.1, tc));
+        const cpx = cs.x + tc*cex, cpy = cs.y + tc*cey;
+        if (Math.hypot(mx - cpx, my - cpy) <= 5) return { name: 'rotate', node: n, kind: 'rotate' };
+      }
       return null;
     },
 
@@ -593,9 +714,8 @@
           M.attach(this.doc, this.page, null, t);
           this.applyTextResize(t); // Figma: new text hugs its content (auto w+h)
           this.history.end(this.doc);
-          this.sel = [t.id];
+          this.setSel([t.id]);
           this.setTool('move');
-          this.markDirty();
           this.beginTextEdit(t);
           return;
         }
@@ -613,9 +733,8 @@
         }
         M.attach(this.doc, this.page, null, n);
         this.history.end(this.doc);
-        this.sel = [n.id];
+        this.setSel([n.id]);
         this._drag = { kind: 'create', node: n, sx: p.x, sy: p.y };
-        this.markDirty();
         return;
       }
 
@@ -626,12 +745,23 @@
         const crect = this.canvas.getBoundingClientRect();
         if (h.kind === 'rotate') {
           const n = h.node;
-          const cx = n._l.x + n._l.w / 2, cy = n._l.y + n._l.h / 2;
+          // Use WORLD center from n._w (or fallback for nodes without layout)
+          const wb = n._w || { x: n.x, y: n.y, w: n.w, h: n.h };
+          const cx = wb.x + wb.w/2, cy = wb.y + wb.h/2;
           const start = this.toWorld(e);
-          this._drag = { kind: 'rotate', node: n, startRot: n.rotation || 0, cx, cy, sa: Math.atan2(start.y - cy, start.x - cx), shift: e.shiftKey };
+          this._drag = { kind: 'rotate', node: n, startRot: n.rotation || 0, cx, cy, sa: Math.atan2(start.y - cy, start.x - cx) };
           n._rotLabel = true;
         } else {
-          this._drag = { kind: 'resize', name: h.name, node: h.node, start: { x: h.node.x, y: h.node.y, w: h.node.w, h: h.node.h, rotation: h.node.rotation || 0 }, sp: { x: e.clientX - crect.left, y: e.clientY - crect.top }, ox: this.view.ox, oy: this.view.oy };
+          // Record initial world-corner state so resize works through rotate/flip.
+          const n = h.node;
+          this._drag = {
+            kind: 'resize', name: h.name, node: n,
+            startW: n.w, startH: n.h,
+            startLocalCx: n.x + n.w/2, startLocalCy: n.y + n.h/2,
+            startWt: n._wt ? n._wt.slice() : null,
+            sp: { x: e.clientX - crect.left, y: e.clientY - crect.top },
+            ox: this.view.ox, oy: this.view.oy
+          };
         }
         return;
       }
@@ -649,7 +779,7 @@
         const starts = this.sel.map(id => { const n = page.nodes[id]; return n ? { id, x: n.x, y: n.y } : null; }).filter(Boolean);
         this._drag = { kind: 'move', starts, sx: p.x, sy: p.y, moved: false };
       } else {
-        if (!e.shiftKey) this.sel = [];
+        if (!e.shiftKey) { this.setSel([]); }
         this._drag = { kind: 'marquee', sx: p.x, sy: p.y, base: e.shiftKey ? this.sel.slice() : [] };
         this.markDirty();
       }
@@ -661,20 +791,34 @@
       if (c && rect.width && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
         global.Collab.sendCursor(this.toWorld(e).x, this.toWorld(e).y);
       }
-      // hover cursor
+      // Active drag: update cursor to "grabbing" / "crosshair" appropriately
+      if (d) {
+        if (d.kind === 'pan') c.style.cursor = 'grabbing';
+        else if (d.kind === 'rotate' || d.kind === 'rotate-multi') c.style.cursor = 'grabbing';
+      }
+      // hover cursor + rotate handle hover tracking
       if (!d) {
         if (this.tool === 'pen' && this.pen) { this.pen.cursor = this.toWorld(e); this.markDirty(); }
+        // Track whether pointer is in the rotate-hover zone so drawSelection
+        // can show/hide the rotate dot + connector.
+        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        const wasHover = this.view._hoverRotate;
+        const isHover = this._updateRotateHover(mx, my);
         const h = this.handleAt(e);
         if (h) c.style.cursor = cursorFor(h.name);
         else if (this.tool !== 'move') c.style.cursor = this.tool === 'text' ? 'text' : 'crosshair';
         else if (this.space) c.style.cursor = 'grab';
         else c.style.cursor = this.hitTest(this.toWorld(e)) ? 'default' : 'default';
+        // Redraw if rotate hover state changed so the dot appears/disappears
+        if (wasHover !== isHover) this.markDirty();
         return;
       }
       if (d.kind === 'pan') {
         this.view.ox = d.ox + (e.clientX - d.sx);
         this.view.oy = d.oy + (e.clientY - d.sy);
-        this.markDirty();
+        // Pan only moves the camera; no node state changes. A light redraw
+        // skips full layout + panels refresh to eliminate flicker.
+        this._redrawLight();
         return;
       }
       const p = this.toWorld(e);
@@ -708,7 +852,7 @@
         const ang = Math.atan2(p.y - d.cy, p.x - d.cx);
         let rot = ang - d.sa + d.startRot;
         if (e.shiftKey) {
-          const snap = Math.PI / 12; // 15° increments with Shift
+          const snap = Math.PI / 12; // 15° increments with Shift (Figma standard)
           rot = Math.round(rot / snap) * snap;
         }
         // Normalize to [-PI, PI]
@@ -740,82 +884,57 @@
     },
     doResize(d, e) {
       const n = d.node;
-      const z = this.view.zoom;
       const p = this.toWorld(e);
-      const rot = d.start.rotation || 0;
-      const cos = Math.cos(rot), sin = Math.sin(rot);
-      const fh = n.flipH ? -1 : 1, fv = n.flipV ? -1 : 1;
-      const sx = d.start.x, sy = d.start.y, sw = d.start.w, sh = d.start.h;
-      const scx = sx + sw / 2, scy = sy + sh / 2;
-      // Convert current pointer to node-local coords (unrotated, unflipped)
-      // relative to the start center.
-      const gdx = p.x - scx, gdy = p.y - scy;
-      // inverse rotate
-      const rdx = gdx * cos + gdy * sin;
-      const rdy = -gdx * sin + gdy * cos;
-      // inverse flip
-      const ldx = rdx * fh, ldy = rdy * fv;
-      // Local half-size implied by pointer.
-      const halfX = Math.abs(ldx);
-      const halfY = Math.abs(ldy);
-      let w = sw, h = sh;
-      // corner handles move both axes; edge handles move one.
-      const movesE = d.name.includes('e');
-      const movesW = d.name.includes('w');
-      const movesS = d.name.includes('s');
-      const movesN = d.name.includes('n');
+      const W = global.World;
+      const sw = d.startW, sh = d.startH;
+      const movesE = d.name.includes('e'), movesW = d.name.includes('w');
+      const movesS = d.name.includes('s'), movesN = d.name.includes('n');
       const isCorner = d.name.length === 2;
-      if (isCorner) {
-        if (e.shiftKey) {
-          // preserve aspect ratio
-          const ratio = sw / sh;
-          const candidateW = Math.max(4, 2 * Math.max(halfX, halfY * ratio));
-          const candidateH = candidateW / ratio;
-          w = candidateW; h = candidateH;
-        } else {
-          w = Math.max(4, 2 * halfX);
-          h = Math.max(4, 2 * halfY);
-        }
-      } else {
-        if (movesE || movesW) w = Math.max(4, 2 * halfX);
-        if (movesN || movesS) h = Math.max(4, 2 * halfY);
+      // Snapshot anchor + handle on first call (opposite corner/edge stays fixed).
+      if (!d._snapInitialized) {
+        d._snapInitialized = true;
+        const hmap = { nw:[0,0], n:[sw/2,0], ne:[sw,0], e:[sw,sh/2], se:[sw,sh], s:[sw/2,sh], sw:[0,sh], w:[0,sh/2] };
+        const [hx, hy] = hmap[d.name] || [sw,sh];
+        d._hx = hx; d._hy = hy;
+        d._ax = sw - hx; d._ay = sh - hy;
       }
-      // Position: keep center fixed during resize (matches how we computed sizes from center).
-      let x = scx - w / 2, y = scy - h / 2;
+      // Map world pointer → node-local content coords.
+      let lpx, lpy;
+      if (n._wt) {
+        const lp = W.worldToLocal(n, p.x, p.y);
+        if (!lp) return;
+        lpx = lp.x; lpy = lp.y;
+      } else { lpx = p.x - n.x; lpy = p.y - n.y; }
+      let newW = sw, newH = sh;
+      if (movesE) newW = Math.max(4, Math.abs(lpx - d._ax));
+      else if (movesW) newW = Math.max(4, Math.abs(lpx - d._ax));
+      if (movesS) newH = Math.max(4, Math.abs(lpy - d._ay));
+      else if (movesN) newH = Math.max(4, Math.abs(lpy - d._ay));
+      if (isCorner && e.shiftKey) {
+        const ratio = sw / sh;
+        if (newW / ratio > newH) newH = newW / ratio; else newW = newH * ratio;
+      }
+      // New local position of the dragged handle/corner.
+      let newHx, newHy;
+      if (isCorner) { newHx = movesE ? newW : 0; newHy = movesS ? newH : 0; }
+      else {
+        newHx = movesE ? newW : movesW ? 0 : newW/2;
+        newHy = movesS ? newH : movesN ? 0 : newH/2;
+      }
+      // Shift top-left so the anchor stays at its current world/parent-local point.
+      n.x += d._ax - newHx;
+      n.y += d._ay - newHy;
+      n.w = newW; n.h = newH;
       if (n.type === 'text') {
         if (movesE || movesW) M.textResizeDemote(n, 'h');
         if (movesN || movesS) M.textResizeDemote(n, 'v');
       }
-      n.x = x; n.y = y; n.w = w; n.h = h;
-      // Smart guides are approximate when rotated — skip for rotated nodes to avoid mis-snaps.
-      if ((rot || n.flipH || n.flipV)) {
-        this._snapGuides = null;
-      } else if (this.snapEnabled(e)) {
-        const allow = {
-          x: d.name.includes('e') ? ['right', 'cx'] : d.name.includes('w') ? ['left', 'cx'] : [],
-          y: d.name.includes('s') ? ['bottom', 'cy'] : d.name.includes('n') ? ['top', 'cy'] : [],
-        };
-        const r = this._snapBox({ x, y, w, h }, [n.id], allow);
-        if (r) {
-          if (r.xs && (movesE || movesW)) {
-            if (r.xs.side === 'right') w = Math.max(4, w + r.dx);
-            else if (r.xs.side === 'left') w = Math.max(4, x + w - r.xs.val);
-            if (movesW) x = r.xs.val;
-          }
-          if (r.ys && (movesN || movesS)) {
-            if (r.ys.side === 'bottom') h = Math.max(4, h + r.dy);
-            else if (r.ys.side === 'top') h = Math.max(4, y + h - r.ys.val);
-            if (movesN) y = r.ys.val;
-          }
-          this._snapGuides = r.guides;
-        } else this._snapGuides = null;
-      }
+      this._snapGuides = null;
       if (n.shape) n.path = this._shapePath(n);
       if (n.type === 'text') this.applyTextResize(n);
       this.markDirty();
-      this.status(`x ${Math.round(n.x)}   y ${Math.round(n.y)}   w ${Math.round(n.w)}   h ${Math.round(n.h)}`);
-    },
-    statusPos() {
+      this.status('w ' + Math.round(n.w) + '   h ' + Math.round(n.h));
+    },    statusPos() {
       if (this.sel.length === 1) {
         const n = this.page.nodes[this.sel[0]];
         if (n) this.status(`x ${Math.round(n.x)}   y ${Math.round(n.y)}   w ${Math.round(n.w)}   h ${Math.round(n.h)}`);
@@ -847,9 +966,12 @@
       for (const s of starts) {
         const n = page.nodes[s.id];
         if (!n) continue;
-        const L = n._l || { x: n.x, y: n.y, w: n.w, h: n.h };
-        x0 = Math.min(x0, L.x + dx); y0 = Math.min(y0, L.y + dy);
-        x1 = Math.max(x1, L.x + L.w + dx); y1 = Math.max(y1, L.y + L.h + dy);
+        const bb = n._w || { x: n.x, y: n.y, w: n.w, h: n.h };
+        // s.x/s.y are parent-local at drag START; we need the world position at drag start.
+        // For simplicity, use the pre-drag world BB from n._w (computed last frame).
+        const sx = bb.x, sy = bb.y;
+        x0 = Math.min(x0, sx + dx); y0 = Math.min(y0, sy + dy);
+        x1 = Math.max(x1, sx + bb.w + dx); y1 = Math.max(y1, sy + bb.h + dy);
       }
       if (!isFinite(x0)) return null;
       return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
@@ -870,14 +992,14 @@
       const ysT = [{ val: 0, side: 'top', x0: null, x1: null }];
       const visit = (n) => {
         if (excl.has(n.id)) return;
-        const L = n._l;
-        if (L && n.visible !== false && isFinite(L.x) && isFinite(L.w)) {
-          xsT.push({ val: L.x, side: 'left', y0: L.y, y1: L.y + L.h });
-          xsT.push({ val: L.x + L.w / 2, side: 'cx', y0: L.y, y1: L.y + L.h });
-          xsT.push({ val: L.x + L.w, side: 'right', y0: L.y, y1: L.y + L.h });
-          ysT.push({ val: L.y, side: 'top', x0: L.x, x1: L.x + L.w });
-          ysT.push({ val: L.y + L.h / 2, side: 'cy', x0: L.x, x1: L.x + L.w });
-          ysT.push({ val: L.y + L.h, side: 'bottom', x0: L.x, x1: L.x + L.w });
+        const bb = n._w;
+        if (bb && n.visible !== false && isFinite(bb.x) && isFinite(bb.w)) {
+          xsT.push({ val: bb.x, side: 'left', y0: bb.y, y1: bb.y + bb.h });
+          xsT.push({ val: bb.x + bb.w / 2, side: 'cx', y0: bb.y, y1: bb.y + bb.h });
+          xsT.push({ val: bb.x + bb.w, side: 'right', y0: bb.y, y1: bb.y + bb.h });
+          ysT.push({ val: bb.y, side: 'top', x0: bb.x, x1: bb.x + bb.w });
+          ysT.push({ val: bb.y + bb.h / 2, side: 'cy', x0: bb.x, x1: bb.x + bb.w });
+          ysT.push({ val: bb.y + bb.h, side: 'bottom', x0: bb.x, x1: bb.x + bb.w });
         }
         for (const cid of n.children) { const k = page.nodes[cid]; if (k) visit(k); }
       };
@@ -1197,6 +1319,8 @@
       const P = global.Pen;
       if (this.pen && this._penNodes() && this._penNodes().length) {
         ctx.save();
+        const dpr = window.devicePixelRatio || 1;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.translate(this.view.ox, this.view.oy);
         ctx.scale(this.view.zoom, this.view.zoom);
         const z = this.view.zoom;
@@ -1259,6 +1383,8 @@
       // pencil stroke preview
       if (this.pencil && this.pencil.pts.length > 1) {
         ctx.save();
+        const dpr = window.devicePixelRatio || 1;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.translate(this.view.ox, this.view.oy);
         ctx.scale(this.view.zoom, this.view.zoom);
         const z = this.view.zoom;
@@ -1279,7 +1405,9 @@
       const rect = this.canvas.getBoundingClientRect();
       const cx = rect.width / 2, cy = rect.height / 2;
       ctx.save();
-      ctx.fillStyle = 'rgba(120,120,130,0.55)';
+      const dpr = window.devicePixelRatio || 1;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = 'rgba(180,180,190,0.45)';
       ctx.textAlign = 'center';
       ctx.font = '600 20px Inter, "Helvetica Neue", Arial, sans-serif';
       ctx.fillText('Start designing', cx, cy - 24);
@@ -1298,7 +1426,7 @@
       const ta = document.createElement('textarea');
       ta.className = 'text-edit';
       ta.value = n.text.content;
-      const s = this.toScreen({ x: n._l ? n._l.x : n.x, y: n._l ? n._l.y : n.y });
+      const s = this.toScreen({ x: n._w ? n._w.x : n.x, y: n._w ? n._w.y : n.y });
       const L = n._l || { x: n.x, y: n.y, w: n.w, h: n.h };
       Object.assign(ta.style, {
         left: s.x + 'px', top: s.y + 'px',
@@ -1337,25 +1465,70 @@
     },
 
     // ------------------------------------------------------------- wheel / zoom
+    // Smooth-zoom accumulator so wheel zoom doesn't jitter (Figma zooms
+    // continuously rather than per-event redraw with quantization).
+    // Critical: camera-only changes (zoom/pan) draw in the SAME rAF as the
+    // state mutation — no second rAF, no re-layout. Otherwise there is a
+    // 1-frame gap where zoom has changed but canvas hasn't repainted, which
+    // is what users see as "flicker" during zoom.
+    _wheelZoomAcc: 0,
     onWheel(e) {
       const rect = this.canvas.getBoundingClientRect();
       const px = e.clientX - rect.left, py = e.clientY - rect.top;
       if (e.ctrlKey || e.metaKey) {
-        const f = Math.exp(-e.deltaY * 0.0022);
-        this.zoomAt(px, py, f);
+        e.preventDefault();
+        this._wheelZoomAcc += -e.deltaY;
+        if (this._wheelRaf) return;
+        this._wheelRaf = requestAnimationFrame(() => {
+          const acc = this._wheelZoomAcc;
+          this._wheelZoomAcc = 0;
+          this._wheelRaf = null;
+          const f = Math.exp(acc * 0.0022);
+          // Camera move only — mutate view and redraw LIGHTLY in this SAME
+          // frame. Do NOT call markDirty (which schedules another rAF + runs
+          // full layout) because no node geometry changed.
+          this._applyZoomAt(px, py, f);
+          this._redrawLight();
+          this.updateZoomLabel();
+        });
       } else {
+        e.preventDefault();
+        // Figma: shift+wheel = horizontal scroll; regular = vertical.
+        // Direct mutation + light redraw, no layout, no extra rAF.
         this.view.ox -= e.shiftKey ? e.deltaY : e.deltaX;
         this.view.oy -= e.shiftKey ? 0 : e.deltaY;
-        this.markDirty();
+        this._redrawLight();
       }
     },
-    zoomAt(px, py, factor) {
+    // Camera zoom math only — mutate view.zoom/ox/oy, no redraw, no markDirty.
+    _applyZoomAt(px, py, factor) {
       const z0 = this.view.zoom;
       const z1 = Math.max(0.04, Math.min(24, z0 * factor));
       const f = z1 / z0;
       this.view.ox = px - (px - this.view.ox) * f;
       this.view.oy = py - (py - this.view.oy) * f;
       this.view.zoom = z1;
+    },
+    // Light redraw: skip re-layout & panels refresh. Used during fast
+    // continuous interactions (pan/zoom-in-progress) where we don't want
+    // the cost of full layout each frame. Selection/hit-test already
+    // uses last frame's _wt/_wc which is valid because we're not mutating
+    // any node, just changing the camera.
+    _redrawLight() {
+      const c = this.canvas; if (!c) return;
+      const ctx = this.ctx; if (!ctx) return;
+      const rect = c.getBoundingClientRect();
+      const v = this.view;
+      R.drawPage(ctx, this.page, this.doc, { zoom: v.zoom, ox: v.ox, oy: v.oy, w: rect.width, h: rect.height, grid: v.grid, pixelPreview: v.pixelPreview, canvasColor: v.canvasColor });
+      R.drawSelection(ctx, this.view, this.sel, this.page);
+      if (this.marquee) R.drawMarquee(ctx, this.marquee);
+      this.drawPenOverlay(ctx);
+      R.drawSnapGuides(ctx, this.view, this._snapGuides);
+      R.drawRulers(ctx, this.view, rect.width, rect.height);
+      this.updateZoomLabel();
+    },
+    zoomAt(px, py, factor) {
+      this._applyZoomAt(px, py, factor);
       this.markDirty();
     },
     zoomBy(f) {
@@ -1425,10 +1598,10 @@
       if (e) e.preventDefault();
     },
     historyUndo() {
-      if (this.history.undo(this.doc)) { this.sel = []; this.markDirty(); global.Panels.refreshInspector(); }
+      if (this.history.undo(this.doc)) { this.setSel([]); }
     },
     historyRedo() {
-      if (this.history.redo(this.doc)) { this.sel = []; this.markDirty(); }
+      if (this.history.redo(this.doc)) { this.setSel([]); }
     },
     selectAll() { this.setSel(this.page.tops.slice()); },
     nudge(dx, dy, e) {
@@ -1464,10 +1637,8 @@
       if (this._paletteEl) { this.paletteClose(); return; }
       if (this.pen) { this.penEscape(); return; }
       this.endTextEdit();
-      this.sel = [];
+      this.setSel([]);
       this.setTool('move');
-      global.Panels.refreshInspector();
-      this.markDirty();
     },
     cycleSel(dir) {
       const tops = this.page.tops.filter(id => this.page.nodes[id]);
@@ -1766,10 +1937,8 @@
       if (!ids.length) return;
       this.history.begin(this.doc);
       for (const id of ids) M.detach(this.page, this.page.nodes[id]);
-      this.sel = [];
       this.history.end(this.doc);
-      global.Panels.refreshInspector();
-      this.markDirty();
+      this.setSel([]);
     },
     flipSel(axis) {
       const ids = this.sel.filter(id => { const n = this.page.nodes[id]; return n && !n.locked; });
@@ -1820,7 +1989,7 @@
       if (!g || g.type !== 'frame' || g.al || g.fills.length || g.shadows.length) return;
       const page = this.page;
       this.history.begin(this.doc);
-      const kids = M.kids(page, g).map(k => ({ k, x: g._l.x + k.x, y: g._l.y + k.y }));
+      const kids = M.kids(page, g).map(k => ({ k, x: (g._w?g._w.x:g.x) + k.x, y: (g._w?g._w.y:g.y) + k.y }));
       const gp = g.parent;
       for (const { k, x, y } of kids) {
         M.detach(page, k);
@@ -2009,8 +2178,8 @@
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       M.forEachNode(page, node, (c) => {
         if (!c._l || c.visible === false) return;
-        minX = Math.min(minX, c._l.x); minY = Math.min(minY, c._l.y);
-        maxX = Math.max(maxX, c._l.x + c._l.w); maxY = Math.max(maxY, c._l.y + c._l.h);
+        minX = Math.min(minX, c._w.x); minY = Math.min(minY, c._w.y);
+        maxX = Math.max(maxX, c._w.x + c._l.w); maxY = Math.max(maxY, c._w.y + c._l.h);
       });
       if (!isFinite(minX)) { minX = node.x; minY = node.y; maxX = node.x + node.w; maxY = node.y + node.h; }
       const c = this.present.front === 'A' ? this.present.cA : this.present.cB;
@@ -2024,7 +2193,7 @@
       const P = this.present;
       const c = P.front === 'A' ? P.cB : P.cA;
       const n = dest.node;
-      const L = n._l ? { x: n._l.x, y: n._l.y, w: n._l.w, h: n._l.h } : { x: n.x, y: n.y, w: n.w, h: n.h };
+      const L = n._w ? { x: n._w.x, y: n._w.y, w: n._w.w, h: n._w.h } : { x: n.x, y: n.y, w: n.w, h: n.h };
       const W = c.width, H = c.height;
       const zoom = Math.max(0.02, Math.min(8, Math.min((W - 60) / Math.max(1, L.w), (H - 60) / Math.max(1, L.h))));
       return { zoom, ox: (W - L.w * zoom) / 2 - L.x * zoom, oy: (H - L.h * zoom) / 2 - L.y * zoom };
@@ -2060,7 +2229,7 @@
             ctx.strokeStyle = '#0d99ff';
             ctx.lineWidth = 2 / v.zoom;
             ctx.setLineDash([6 / v.zoom, 4 / v.zoom]);
-            ctx.strokeRect(n._l.x - 2 / v.zoom, n._l.y - 2 / v.zoom, n._l.w + 4 / v.zoom, n._l.h + 4 / v.zoom);
+            ctx.strokeRect(n._w.x - 2 / v.zoom, n._w.y - 2 / v.zoom, n._w.w + 4 / v.zoom, n._w.h + 4 / v.zoom);
             ctx.restore();
           }
           for (const cid of n.children) { const k = page.nodes[cid]; if (k) hl(k); }
@@ -2121,7 +2290,7 @@
           for (let i = n.children.length - 1; i >= 0; i--) {
             const k = ov.page.nodes[n.children[i]];
             if (!k) continue;
-            if (k._l && k.interactions && k.interactions.length && !nav2 && ox >= k._l.x && ox <= k._l.x + k._l.w && oy >= k._l.y && oy <= k._l.y + k._l.h) nav2 = k;
+            if (k._l && k.interactions && k.interactions.length && !nav2 && ox >= k._w.x && ox <= k._w.x + k._w.w && oy >= k._w.y && oy <= k._w.y + k._w.h) nav2 = k;
             visit2(k);
           }
           if (!nav2 && ox >= L.x && ox <= L.x + L.w && oy >= L.y && oy <= L.y + L.h) nav2 = n;
@@ -2233,16 +2402,16 @@
 
   function centerOf(c) { const r = c.getBoundingClientRect(); return { x: r.width / 2, y: r.height / 2 }; }
   function cursorFor(h) {
-    if (h === 'rotate') return 'crosshair';
+    if (h === 'rotate') return 'grab';
     return { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize' }[h] || 'default';
   }
   function marqueeSelect(page, box) {
     const out = [];
     const visit = (n) => {
-      const L = n._l;
-      if (!L) return;
-      const x2 = L.x + L.w, y2 = L.y + L.h;
-      if (x2 >= box.x && L.x <= box.x + box.w && y2 >= box.y && L.y <= box.y + box.h) out.push(n.id);
+      const bb = n._w;
+      if (!bb) return;
+      const x2 = bb.x + bb.w, y2 = bb.y + bb.h;
+      if (x2 >= box.x && bb.x <= box.x + box.w && y2 >= box.y && bb.y <= box.y + box.h) out.push(n.id);
       for (const cid of n.children) { const k = page.nodes[cid]; if (k) visit(k); }
     };
     for (const tid of page.tops) { const t = page.nodes[tid]; if (t) visit(t); }

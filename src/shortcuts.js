@@ -97,11 +97,14 @@
 
   def('shift+1', 'Zoom to fit', 'View', (a) => a.zoomToFit());
   def('shift+2', 'Zoom to selection', 'View', (a) => a.zoomToSelection());
+  def('shift+0', 'Zoom to 100%', 'View', (a) => a.zoomTo100());
   def('0', 'Zoom to fit', 'View', (a) => a.zoomToFit());
   def('1', 'Zoom to 100%', 'View', (a) => a.zoomTo100());
   def('+', 'Zoom in', 'View', (a) => a.zoomBy(1.2));
   def('=', 'Zoom in', 'View', (a) => a.zoomBy(1.2));
   def('-', 'Zoom out', 'View', (a) => a.zoomBy(1 / 1.2));
+  def('shift+r', 'Toggle rulers', 'View', (a) => { a.view.rulers=!a.view.rulers; a.syncViewToggles(); a.markDirty(); });
+  def('shift+g', 'Toggle layout grid', 'View', (a) => { a.view.grid = a.view.grid ? null : (a.view.gridSize||10); a.syncViewToggles(); a.markDirty(); });
   def('shift+k', 'Present', 'Prototype', (a) => a.startPresent());
   def('?', 'Shortcuts reference', 'App', (a) => a.showShortcutsModal());
   def('escape', 'Deselect / exit (pen: close→end→leave)', 'App', (a) => a.escapeAction());
