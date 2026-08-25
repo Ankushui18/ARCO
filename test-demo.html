@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Penfig — local test demo</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: #1e1e1e; color: #d4d4d4;
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; }
+    h1 { font-size: 20px; color: #fff; margin: 0 0 4px; }
+    .sub { color: #8a8a8a; font-size: 13px; margin-bottom: 20px; }
+    .sub a { color: #0d99ff; text-decoration: none; }
+    .bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    button {
+      background: #0d99ff; color: #fff; border: 0; border-radius: 4px;
+      padding: 8px 16px; font-size: 14px; cursor: pointer;
+    }
+    button:hover { background: #2faaff; }
+    button:disabled { opacity: .6; cursor: wait; }
+    #status { font-size: 13px; color: #8a8a8a; }
+    #total { font-size: 15px; font-weight: 600; }
+    #total.pass { color: #4caf50; }
+    #total.fail { color: #f44336; }
+    ul { list-style: none; margin: 0; padding: 0; }
+    li.check {
+      border: 1px solid #2c2c2c; border-radius: 6px; margin-bottom: 8px;
+      padding: 10px 14px; background: #242424;
+    }
+    li.check.pass { border-left: 3px solid #4caf50; }
+    li.check.fail { border-left: 3px solid #f44336; background: #2a2222; }
+    li.check.skip { border-left: 3px solid #666; opacity: .75; }
+    .row1 { display: flex; align-items: baseline; gap: 10px; }
+    .ico { font-size: 14px; }
+    .nm { font-weight: 600; color: #eee; }
+    .ms { margin-left: auto; color: #6f6f6f; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .det { color: #9a9a9a; font-size: 12.5px; margin-top: 4px; }
+    .note {
+      margin-top: 22px; padding: 12px 14px; border: 1px dashed #3a3a3a; border-radius: 6px;
+      color: #8a8a8a; font-size: 12.5px;
+    }
+    code { background: #2c2c2c; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Penfig — local test demo</h1>
+    <div class="sub">
+      Runs the <b>real app code</b> (the same modules <a href="index.html">index.html</a> loads) through 12 checks.
+      No server, no network needed — the Figma <code>.fig</code> fixture used by check 2 is embedded in the page.
+    </div>
+    <div class="bar">
+      <button id="run" type="button">▶ Run all checks</button>
+      <span id="status">ready</span>
+      <span id="total"></span>
+    </div>
+    <ul id="results"></ul>
+    <div class="note">
+      How to run:<br>
+      1. <b>Online (serves the whole app too):</b> <code>cd penfig &amp;&amp; python3 -m http.server 8080</code> → open
+      <code>http://localhost:8080/test-demo.html</code> — check 12 additionally fetches a real 9-vector
+      Figma file from <code>fixtures/</code>.<br>
+      2. <b>Offline:</b> double-click <code>test-demo.html</code> directly — checks 1–11 run as-is, check 12
+      skips itself. In a normal browser, check 8 executes the plugin in a <b>real Web Worker</b>; in
+      restricted contexts it falls back to the labeled local-realm mode and says so.
+    </div>
+  </div>
+
+  <!-- identical module set + load order as index.html (minus the app shell) -->
+  <script src="assets/figio.js"></script>
+  <script>window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIOBundle);</script>
+  <script src="src/model.js"></script>
+  <script src="src/layout.js"></script>
+  <script src="src/render.js"></script>
+  <script src="src/tokens.js"></script>
+  <script src="src/figconv.js"></script>
+  <script src="src/components.js"></script>
+  <script src="src/eco.js"></script>
+  <script src="src/svgexport.js"></script>
+  <script src="src/styles.js"></script>
+  <script src="src/arrange.js"></script>
+  <script src="src/pdfexport.js"></script>
+  <script src="src/collab.js"></script>
+  <script src="src/plugins.js"></script>
+  <script src="src/pen.js"></script>
+  <script src="src/boolean.js"></script>
+  <script src="src/shortcuts.js"></script>
+  <script src="test-demo.js"></script>
+  <script>
+    (function () {
+      const ul = document.getElementById('results');
+      const btn = document.getElementById('run');
+      const statusEl = document.getElementById('status');
+      const totalEl = document.getElementById('total');
+
+      // pre-render rows
+      for (const c of window.PenfigDemo.checks) {
+        const li = document.createElement('li');
+        li.className = 'check';
+        li.innerHTML = '<div class="row1"><span class="ico">…</span><span class="nm"></span>' +
+          '<span class="ms"></span></div><div class="det"></div>';
+        li.querySelector('.nm').textContent = c.name;
+        ul.appendChild(li);
+      }
+
+      function paint(results) {
+        const lis = ul.children;
+        results.forEach((r, i) => {
+          const li = lis[i];
+          li.className = 'check ' + (r.skip ? 'skip' : r.ok ? 'pass' : 'fail');
+          li.querySelector('.ico').textContent = r.skip ? '⏭' : r.ok ? '✔' : '✖';
+          li.querySelector('.ms').textContent = r.ms + ' ms';
+          li.querySelector('.det').textContent = r.detail;
+        });
+      }
+
+      async function run() {
+        btn.disabled = true;
+        statusEl.textContent = 'running…';
+        totalEl.textContent = '';
+        totalEl.className = '';
+        const t0 = Date.now();
+        try {
+          const results = await window.PenfigDemo.runAll(paint);
+          const passed = results.filter(r => r.ok && !r.skip).length;
+          const skipped = results.filter(r => r.skip).length;
+          const failed = results.length - passed - skipped;
+          statusEl.textContent = 'done in ' + (Date.now() - t0) + ' ms';
+          totalEl.textContent = passed + '/' + results.length + ' passed' + (skipped ? ' · ' + skipped + ' skipped' : '') + (failed ? ' · ' + failed + ' FAILED' : '');
+          totalEl.className = failed ? 'fail' : 'pass';
+        } catch (e) {
+          statusEl.textContent = 'error: ' + (e && e.message ? e.message : String(e));
+        }
+        btn.disabled = false;
+      }
+
+      btn.addEventListener('click', run);
+      run(); // auto-run on load
+    })();
+  </script>
+</body>
+</html>

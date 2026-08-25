@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Penfig — Figma-style design tool</title>
+  <link rel="stylesheet" href="app.css">
+  <link rel="manifest" href="./manifest.webmanifest">
+</head>
+<body>
+  <div id="view-dashboard" style="display:none"></div>
+  <div id="view-editor" style="display:none"></div>
+  <noscript>Penfig needs JavaScript.</noscript>
+
+  <script src="assets/figio.js"></script>
+  <script>window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIOBundle);</script>
+  <script src="src/model.js"></script>
+  <script src="src/layout.js"></script>
+  <script src="src/render.js"></script>
+  <script src="src/tokens.js"></script>
+  <script src="src/figconv.js"></script>
+  <script src="src/components.js"></script>
+  <script src="src/eco.js"></script>
+  <script src="src/svgexport.js"></script>
+  <script src="src/styles.js"></script>
+  <script src="src/arrange.js"></script>
+  <script src="src/pdfexport.js"></script>
+  <script src="src/collab.js"></script>
+  <script src="src/plugins.js"></script>
+  <script src="src/pen.js"></script>
+<script src="src/boolean.js"></script>
+  <script src="src/shortcuts.js"></script>
+  <script src="src/ui-dashboard.js"></script>
+  <script src="src/ui-editor.js"></script>
+  <script src="src/ui-panels.js"></script>
+  <script src="src/main.js"></script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}
+</script>
+
+</body>
+</html>
