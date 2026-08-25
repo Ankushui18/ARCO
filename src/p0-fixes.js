@@ -760,35 +760,17 @@
     // ===============================================================
     // 17. Multi-selection OBB (rotate a multi-selection as a group)
     // ===============================================================
-    // When multiple nodes are selected and rotate handle is dragged, we
-    // add a rotate handle above the multi-selection AABB that rotates
-    // the whole group around the union center. Matches renderer's 20px
-    // offset (CONNECTOR_START=9, R_DIST=20).
+    // Multi-selection OBB rotate. Cursor-driven rotation for multi-select
+    // is provided by rotate-interaction.js (outside-band rotate hits in all
+    // 8 directions, with directional cursors). We keep the handleAt shim
+    // minimal here — the RotateInteraction wrapper installed after us
+    // overrides handleAt/onDown/onMove and provides the full rotate zone.
     const _handleAt = App.handleAt.bind(App);
     App.handleAt = function(e){
       if (this.sel.length > 1){
-        // compute union world bbox
-        let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
-        for(const id of this.sel){
-          const n = this.page.nodes[id]; if(!n||!n._w) continue;
-          x0=Math.min(x0,n._w.x); y0=Math.min(y0,n._w.y);
-          x1=Math.max(x1,n._w.x+n._w.w); y1=Math.max(y1,n._w.y+n._w.h);
-        }
-        if(!isFinite(x0)) return _handleAt(e);
-        const rect=this.canvas.getBoundingClientRect();
-        const z=this.view.zoom;
-        const mx=e.clientX-rect.left, my=e.clientY-rect.top;
-        // top mid in screen
-        const tx=(x0+(x1-x0)/2)*z+this.view.ox;
-        const ty=y0*z+this.view.oy;
-        const halfW = (x1-x0)*z*0.5;
-        // rotate handle 20px up from top mid (matches renderer's R_DIST=20)
-        const rx=tx, ry=ty-20;
-        // Wider hover zone so it's easy to grab: 8px around dot, plus
-        // along the connector line.
-        if (Math.abs(mx-rx)<=8 && Math.abs(my-ry)<=8) return {name:'rotate', kind:'rotate-multi', center:{x:(x0+x1)/2,y:(y0+y1)/2}};
-        // Connector hit zone from edge (-2px from edge) out to dot
-        if (Math.abs(mx-tx) <= 6 && my >= ty-26 && my <= ty-6) return {name:'rotate', kind:'rotate-multi', center:{x:(x0+x1)/2,y:(y0+y1)/2}};
+        // Fall through to RotateInteraction classify (installed as the
+        // outer handleAt wrapper) for rotate hits in the outside band.
+        return _handleAt(e);
       }
       return _handleAt(e);
     };

@@ -10,12 +10,14 @@
  *   - Bumped cache name = old caches deleted on activate.
  */
 
-const CACHE = 'penfig-app-v8';
+const CACHE = 'penfig-app-v9';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './app.css',
   './manifest.webmanifest',
+  './src/import-worker.js',
+  './src/export-worker.js',
 ];
 
 // Disable on localhost and preview hosts so we don't cache-stale during dev.

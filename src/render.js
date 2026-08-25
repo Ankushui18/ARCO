@@ -834,7 +834,8 @@
       }
       ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
     } else {
-      // Multi-selection: dashed AABB, 4 corner handles, rotate dot on hover.
+      // Multi-selection: dashed AABB, 4 corner handles, count badge.
+      // Rotation is cursor-driven (rotate-interaction.js), no dot drawn.
       ctx.strokeStyle = FIGMA_BLUE; ctx.lineWidth = 1;
       ctx.setLineDash([4,3]);
       ctx.strokeRect(union.x+0.5, union.y+0.5, union.w-1, union.h-1);

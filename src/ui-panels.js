@@ -1839,15 +1839,14 @@
     const doc = App.doc;
     App.saveNow();
     App.layoutDoc(doc, App.page);
-    const thumb = global.Dash.thumbDataURL(doc, App.page, 480);
-    try {
-      const bytes = global.FigConv.exportFig(doc, { thumbnail: thumb });
-      global.Dash.downloadBytes(bytes, doc.name + '.fig', 'application/x-figma');
-      App.toast('Exported ' + doc.name + '.fig', 4000, 'success');
-    } catch (err) {
-      console.error(err);
-      App.toast('.fig export failed: ' + err.message, 6000, 'error');
-    }
+    let thumb = '';
+    try { thumb = global.Dash.thumbDataURL(doc, App.page, 480); } catch (e) { console.warn('thumb failed', e); }
+    // Use worker-based export for large docs (off-main-thread, with
+    // progress UI); small docs fall through synchronously inside.
+    App.exportFigAsync(doc, doc.name, { thumbnail: thumb }).then(
+      () => App.toast('Exported ' + doc.name + '.fig', 4000, 'success'),
+      (err) => { console.error(err); App.toast('.fig export failed: ' + err.message, 6000, 'error'); }
+    );
   }
   function DashExportPfg() {
     const doc = App.doc;

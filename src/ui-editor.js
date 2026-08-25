@@ -146,13 +146,10 @@
       }
     },
     exportBackupFig() {
-      const bytes = global.FigConv.exportFig(this.doc);
-      const blob = new Blob([bytes], { type: 'application/octet-stream' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = (this.doc.name || 'penfig') + '.fig';
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      this.exportFigAsync(this.doc, this.doc.name || 'penfig').then(
+        () => this.toast('Backup exported', 2500, 'success'),
+        (err) => this.toast('Backup failed: ' + err.message, 6000, 'error')
+      );
     },
 
     // ------------------------------------------------------------- chrome
@@ -546,12 +543,21 @@
       return typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && location.protocol !== 'file:';
     },
     openFromBytesAsync(bytes, name, kind) {
-      // Tiering: small files (<10 MB) import synchronously on main thread;
-      // larger files go to the worker with progress UI.
+      // Tiering:
+      //   <10 MB  → synchronous main thread (no overhead)
+      //   10–150 MB → worker with progress UI + cancel
+      //   >150 MB → warn first (may use a lot of memory), then worker
       const size = bytes && bytes.byteLength != null ? bytes.byteLength : (bytes && bytes.length) || 0;
-      const SMALL = 10 * 1024 * 1024;
+      const MB = 1024*1024;
+      const SMALL = 10*MB, WARN = 150*MB;
       if (kind !== 'fig' || size < SMALL || !this.supportsImportWorker()) {
         return this.openFromBytes(bytes, name, kind);
+      }
+      if (size >= WARN) {
+        const mb = Math.round(size/MB);
+        if (!confirm(
+          'This .fig file is ' + mb + ' MB. Importing it may use significant memory and take a while.\n\n' +
+          'Penfig will import it in the background with a progress bar. Continue?')) return;
       }
       this._startImportWorker(bytes, name, kind);
     },
@@ -614,17 +620,19 @@
       if (!this._importWorker) return;
       this._importWorker.postMessage({ kind:'cancel', id:this._importJobId });
     },
-    _showImportProgress(name, pct, msg, phase) {
-      let el = document.getElementById('ed-import-progress');
+    _showProgress(name, pct, msg, kind /* 'import' | 'export' */) {
+      let el = document.getElementById('ed-progress');
       if (!el) {
         el = document.createElement('div');
-        el.id = 'ed-import-progress';
+        el.id = 'ed-progress';
         el.className = 'ed-modal-backdrop';
+        // Icon placeholder is set each call; cancel handler delegates to
+        // whichever worker is currently active.
         el.innerHTML =
           '<div class="ed-import-dialog">' +
             '<div class="ed-import-title">' +
-              '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' +
-              '<span class="ed-import-fname">Importing file…</span>' +
+              '<span class="ed-progress-icon"></span>' +
+              '<span class="ed-import-fname">Working…</span>' +
             '</div>' +
             '<div class="ed-import-bar"><div class="ed-import-fill"></div></div>' +
             '<div class="ed-import-status">Starting…</div>' +
@@ -632,16 +640,92 @@
           '</div>';
         const ed = document.getElementById('view-editor');
         if (ed) ed.appendChild(el);
-        el.querySelector('.ed-import-cancel').addEventListener('click', () => this._cancelImportWorker());
+        el.querySelector('.ed-import-cancel').addEventListener('click', () => {
+          this._cancelImportWorker();
+          if (this._exportWorker) this._exportWorker.postMessage({ kind:'cancel', id:this._exportJobId });
+        });
       }
+      // Icon: import = downward arrow into box, export = upward arrow out.
+      const ICON_IMPORT = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
+      const ICON_EXPORT = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+      el.querySelector('.ed-progress-icon').innerHTML = kind === 'export' ? ICON_EXPORT : ICON_IMPORT;
       el.style.display = 'flex';
-      el.querySelector('.ed-import-fname').textContent = name || 'Importing…';
+      el.querySelector('.ed-import-fname').textContent = name || 'Working…';
       el.querySelector('.ed-import-fill').style.width = Math.max(2, Math.min(100, pct|0)) + '%';
       el.querySelector('.ed-import-status').textContent = msg || '';
     },
-    _hideImportProgress() {
-      const el = document.getElementById('ed-import-progress');
+    _hideProgress() {
+      const el = document.getElementById('ed-progress');
       if (el) el.style.display = 'none';
+    },
+    _showImportProgress(name, pct, msg, phase) { this._showProgress(name, pct, msg, 'import'); },
+    _hideImportProgress() { this._hideProgress(); },
+    _showExportProgress(name, pct, msg, phase) { this._showProgress(name, pct, msg, 'export'); },
+    _hideExportProgress() { this._hideProgress(); },
+
+    // ---- Async worker-based export (off-main-thread for large docs) ----
+    _exportWorker: null,
+    _exportJobId: 0,
+    exportFigAsync(doc, name, opts) {
+      // Tiering: small docs (< 500 nodes, no images) export synchronously.
+      let nodeCount = 0;
+      for (const p of (doc.pages || [])) nodeCount += Object.keys(p.nodes || {}).length;
+      const hasImages = (doc.pages || []).some(p => Object.values(p.nodes||{}).some(n =>
+        (n.fills||[]).some(f => f && f.type==='image')));
+      const SMALL = nodeCount < 400 && !hasImages;
+      if (SMALL || !this.supportsImportWorker()) {
+        return this._exportFigSync(doc, name, opts);
+      }
+      return this._startExportWorker(doc, name, opts);
+    },
+    _exportFigSync(doc, name, opts) {
+      const bytes = global.FigConv.exportFig(doc, opts || {});
+      this._downloadBytes(bytes, (name || doc.name || 'penfig') + '.fig', 'application/x-figma');
+      return Promise.resolve();
+    },
+    _startExportWorker(doc, name, opts) {
+      return new Promise((resolve, reject) => {
+        const jobId = ++this._exportJobId;
+        const fname = (name || doc.name || 'penfig') + '.fig';
+        this._showExportProgress(fname, 2, 'Starting export worker…');
+        let worker;
+        try { worker = new Worker('src/export-worker.js', { type:'classic' }); }
+        catch (err) { this._hideExportProgress(); return this._exportFigSync(doc, name, opts); }
+        this._exportWorker = worker;
+        worker.onmessage = (e) => {
+          const d = e.data;
+          if (!d || d.id !== jobId) return;
+          if (d.kind === 'progress') this._showExportProgress(fname, d.pct, d.msg, d.phase);
+          else if (d.kind === 'done') {
+            worker.terminate(); this._exportWorker = null; this._hideExportProgress();
+            this._downloadBytes(new Uint8Array(d.bytes), d.name, 'application/x-figma');
+            resolve();
+          } else if (d.kind === 'cancelled') {
+            worker.terminate(); this._exportWorker = null; this._hideExportProgress();
+            this.toast('Export cancelled', 2500); resolve();
+          } else if (d.kind === 'error') {
+            worker.terminate(); this._exportWorker = null; this._hideExportProgress();
+            this.toast('.fig export failed: ' + d.message, 8000, 'error'); reject(new Error(d.message));
+          }
+        };
+        worker.onerror = () => {
+          worker.terminate(); this._exportWorker = null; this._hideExportProgress();
+          this.toast('Export worker crashed — retrying on main thread', 5000, 'error');
+          try { this._exportFigSync(doc, name, opts); resolve(); } catch (e) { reject(e); }
+        };
+        // Structured-clone the doc (it's pure JSON).
+        worker.postMessage({ kind:'export', id:jobId, format:'fig', doc, name:fname, opts: opts||{} });
+      });
+    },
+    _downloadBytes(bytes, filename, mime) {
+      const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      const blob = new Blob([u8], { type: mime || 'application/octet-stream' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 5000);
     },
     resizeCanvas() {
       const c = this.canvas;
@@ -756,28 +840,11 @@
         const d = Math.hypot(mx - px, my - py);
         if (d <= 5) return { name, node: n, kind: 'resize' };
       }
-      // Rotate handle: 20px outward from top edge (matches renderer R_DIST=20).
-      // We also check via segment distance, not just point-to-dot, so the
-      // connector line is grabbable too.
-      const topMid = mid(c0, c1);
-      const center = { x: (c0.x + c2.x) * 0.5, y: (c0.y + c2.y) * 0.5 };
-      const ex = c1.x - c0.x, ey = c1.y - c0.y;
-      const elen = Math.hypot(ex, ey) || 1;
-      let nx = ey / elen, ny = -ex / elen;
-      if ((topMid.x - center.x) * nx + (topMid.y - center.y) * ny < 0) { nx = -nx; ny = -ny; }
-      const rh = { x: topMid.x + nx * 20, y: topMid.y + ny * 20 };
-      // Distance from mouse to rotate dot
-      if (Math.hypot(mx - rh.x, my - rh.y) <= 9) return { name: 'rotate', node: n, kind: 'rotate' };
-      // Distance to the connector segment from 9px out (start) to 20px out (dot)
-      const cs = { x: topMid.x + nx * 9, y: topMid.y + ny * 9 };
-      const cex = rh.x - cs.x, cey = rh.y - cs.y;
-      const clen2 = cex*cex + cey*cey;
-      if (clen2 > 1) {
-        let tc = ((mx - cs.x)*cex + (my - cs.y)*cey) / clen2;
-        tc = Math.max(-0.1, Math.min(1.1, tc));
-        const cpx = cs.x + tc*cex, cpy = cs.y + tc*cey;
-        if (Math.hypot(mx - cpx, my - cpy) <= 5) return { name: 'rotate', node: n, kind: 'rotate' };
-      }
+      // Rotation is cursor-driven (outside-band, any direction). The
+      // RotateInteraction module (rotate-interaction.js) wraps handleAt
+      // and onDown/onMove to provide 8-direction rotate cursors and
+      // outside-band rotate hits; we intentionally do NOT have a fixed
+      // rotate dot here.
       return null;
     },
 

@@ -75,45 +75,66 @@ function runTracked(id, phase, label, items, fn) {
 
 function importFigJob(id, bytes, name) {
   try {
-    // Phase 1: decoding zip + kiwi (FigIO.parseFigFile is the heavy
-    // initial step on large files).
     progress(id, 'reading', 2, 'Reading ' + name);
 
     // Ensure we have a Uint8Array view.
     const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    progress(id, 'decoding', 10, 'Unzipping .fig archive');
+    progress(id, 'decoding', 8, 'Unzipping .fig archive…');
 
     const parsed = self.FigIO.parseFigFile(u8);
     if (jobs.get(id) && jobs.get(id).cancelled) throw new Error('Cancelled');
-    progress(id, 'decoding', 35, 'Decoding fig-kiwi schema');
+    progress(id, 'decoding', 30, 'Decoding fig-kiwi schema…');
 
     const msg = parsed.binary.message;
-    const blobs = msg.blobs || [];
-    const nodes = (msg.nodeChanges || []).map(n => {
+    const rawNodes = msg.nodeChanges || [];
+    const nodes = rawNodes.map(n => {
       if (!n.guid) n.guid = { sessionID: 0, localID: 0 };
       if (n.phase === undefined) n.phase = 'CREATED';
       return n;
     }).filter(n => n.phase !== 'REMOVED');
-    progress(id, 'nodes', 50, 'Building node tree (' + nodes.length + ' nodes)');
+    const imgCount = (parsed.images || []).length;
+    progress(id, 'nodes', 42, 'Building node tree… (' + nodes.length + ' raw nodes, ' + imgCount + ' images)');
 
-    // The heavy tree-build lives inside FigConv.importFig, which we can't
-    // easily instrument without patching it. Call it directly — kiwi
-    // decode is already done (parseFigFile did that), so the rest is
-    // JS object construction and images.
-    progress(id, 'images', 65, 'Decoding images');
+    // ---- Instrument model/tokens to report progress during FigConv.importFig
+    const M = self.Model;
+    const T = self.Tokens;
+    let nodeCount = 0;
+    const totalNodeEstimate = nodes.length;
+    let lastReportedPct = 42;
+    const originalMakeNode = M.makeNode;
+    M.makeNode = function() {
+      const n = originalMakeNode.apply(this, arguments);
+      nodeCount++;
+      if ((nodeCount & 0x3F) === 0) { // every 64 nodes
+        const p = 42 + Math.floor(Math.min(33, (nodeCount / Math.max(1,totalNodeEstimate)) * 33));
+        if (p !== lastReportedPct) {
+          lastReportedPct = p;
+          const j = jobs.get(id); if (j && j.cancelled) { M.makeNode = originalMakeNode; throw new Error('Cancelled'); }
+          send({ kind:'progress', id, phase:'nodes', pct:p, msg:'Converting nodes… (' + nodeCount + '/' + totalNodeEstimate + ')' });
+        }
+      }
+      return n;
+    };
 
-    const result = self.FigConv.importFig(u8, (phase, sub) => {
-      const j = jobs.get(id); if (j && j.cancelled) throw new Error('Cancelled');
-    });
+    let result;
+    try {
+      result = self.FigConv.importFig(u8, () => {
+        const j = jobs.get(id); if (j && j.cancelled) throw new Error('Cancelled');
+      });
+    } finally {
+      M.makeNode = originalMakeNode;
+    }
     if (jobs.get(id) && jobs.get(id).cancelled) throw new Error('Cancelled');
 
-    progress(id, 'layout', 90, 'Computing layouts');
+    progress(id, 'images', 78, 'Images decoded (' + (result.report && result.report.images || imgCount) + ')');
+    progress(id, 'layout', 88, 'Computing layouts…');
+
     // Stamp pages (idempotent; FigConv already calls stampPage, but do it
     // again to be safe — cheap).
-    const M = self.Model;
     for (const p of result.doc.pages) M.stampPage(result.doc, p);
 
-    progress(id, 'done', 100, 'Import complete');
+    const r = result.report || {};
+    progress(id, 'done', 100, 'Done — ' + (r.nodes||nodeCount) + ' nodes, ' + (r.pages||0) + ' pages, ' + (r.images||0) + ' images');
     send({ kind:'done', id, doc: result.doc, report: result.report, name });
   } catch (err) {
     if (err.message === 'Cancelled') send({ kind:'cancelled', id });

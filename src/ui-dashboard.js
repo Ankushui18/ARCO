@@ -302,14 +302,10 @@
       try { global.App.layoutDoc(doc); } catch (e) { console.warn('layout pre-export failed', e); }
       let thumb = '';
       try { thumb = thumbDataURL(doc, doc.pages[0], 480); } catch (e) { console.warn('thumb failed', e);}
-      try {
-        const bytes = global.FigConv.exportFig(doc, { thumbnail: thumb });
-        downloadBytes(bytes, doc.name + '.fig', 'application/x-figma');
-        global.App.toast('Exported ' + doc.name + '.fig — opens in Figma for supported node types', 5000, 'success');
-      } catch (err) {
-        console.error(err);
-        global.App.toast('.fig export failed: ' + err.message, 8000, 'error');
-      }
+      global.App.exportFigAsync(doc, doc.name, { thumbnail: thumb }).then(
+        () => global.App.toast('Exported ' + doc.name + '.fig — opens in Figma for supported node types', 5000, 'success'),
+        (err) => { console.error(err); global.App.toast('.fig export failed: ' + err.message, 8000, 'error'); }
+      );
     },
     exportPfg(id) {
       const entry = M.store.get(id);
