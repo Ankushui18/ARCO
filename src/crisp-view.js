@@ -109,11 +109,12 @@
       };
 
       const z = snapped.zoom || 1;
-      const pixelOn = view.pixelPreview !== false;
+      // Figma: Pixel preview is OFF unless the user turns it on (⌘P).
+      // We used `!== false`, so it was on by default and every zoom > 100%
+      // became a nearest-neighbor bitmap — that's why the file looked pixelated.
+      const pixelOn = view.pixelPreview === true;
 
-      // Figma Pixel preview: when zoomed in past 100%, paint a 1:1 raster
-      // of the visible world and blit it with nearest-neighbor so you see
-      // real pixels instead of a smeared upsample.
+      // Only when Pixel preview is on: 1 design px → 1 CSS px, then NN upscale.
       if (pixelOn && z > 1.02 && view.w > 8 && view.h > 8) {
         const worldW = Math.max(1, Math.ceil(view.w / z));
         const worldH = Math.max(1, Math.ceil(view.h / z));
@@ -156,7 +157,7 @@
         }
       }
 
-      applySmoothing(ctx, !(pixelOn && z >= 1), z < 1 ? 'high' : 'medium');
+      applySmoothing(ctx, true, 'high');
       return _drawPage(ctx, page, doc, snapped);
     };
 

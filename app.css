@@ -348,7 +348,7 @@ a { color: inherit; }
 
 /* ─────────────────────── Canvas area ─────────────────────── */
 .ed-canvas-wrap { flex: 1; position: relative; min-width: 0; background: var(--canvas-bg); overflow: hidden; }
-#ed-canvas { position: absolute; inset: 0; display: block; cursor: inherit; touch-action: none; }
+#ed-canvas { position: absolute; top: 0; left: 0; display: block; cursor: inherit; touch-action: none; }
 /* When the user is NOT dragging, allow two-finger trackpad pan / pinch.
    The pointerdown handler will set --panning:1 which re-enables
    touch-action:none via this rule (JS sets an attribute on body). */
@@ -911,11 +911,6 @@ body.pan-ready #ed-canvas { touch-action: pan-x pan-y; }
 .ly-row.ly-drag-over-after { box-shadow: inset 0 -2px 0 var(--accent); }
 .ly-row.ly-drag-over-into { background: rgba(13,153,255,.18) !important; box-shadow: inset 0 0 0 1px var(--accent); }
 
-/* Minimap */
-.ed-minimap { position: absolute; right: 12px; bottom: 44px; width: 180px; height: 120px; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; cursor: crosshair; z-index: 6; box-shadow: 0 4px 14px rgba(0,0,0,.4); image-rendering: pixelated; }
-
-
-
 /* Batch export modal */
 .batch-scales, .batch-formats { display: flex; gap: 12px; padding: 8px 0; flex-wrap: wrap; }
 .batch-scales label, .batch-formats label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px;}
@@ -939,8 +934,8 @@ body.pan-ready #ed-canvas { touch-action: pan-x pan-y; }
 
 /* Canvas never animates its layout — CSS transitions on canvas/wrapper
    cause visible flicker during zoom/pan because the compositor interpolates
-   size changes. Leave image-rendering at its default (bilinear) so rotated
-   and non-integer-zoomed content stays smooth. */
+   size changes. Do NOT use inset:0 on #ed-canvas: that stretches a
+   fractional-DPR bitmap and makes the whole viewport look blurry. */
 
 /* P0 closeout additions */
 .ly-filter { margin-left: 6px; background: #1a1a1a; border: 1px solid #2a2a2a; color: var(--txt); font-size: 11px; padding: 3px 4px; border-radius: 4px; outline: none; font-family: inherit; max-width: 100px;}
@@ -1508,3 +1503,286 @@ body.pan-ready #ed-canvas { touch-action: pan-x pan-y; }
 .pf-preset-list { display: flex; flex-direction: column; gap: 4px; }
 .pf-preset-list .ed-btn { justify-content: space-between; }
 .pf-preset-list small { opacity: .5; font-weight: 400; }
+
+
+/* Export save sheet — visible fallback when <a download> is blocked */
+.pf-save-sheet { position:fixed; inset:0; z-index:5000; display:grid; place-items:center; background:rgba(0,0,0,.55); padding:24px; }
+.pf-save-card { width:min(420px,100%); background:#1c1e24; color:#eee; border:1px solid rgba(255,255,255,.12); border-radius:14px; padding:18px 18px 16px; box-shadow:0 24px 60px rgba(0,0,0,.5); }
+.pf-save-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; font-size:15px; }
+.pf-save-head [data-x] { border:0; background:transparent; color:#aaa; font-size:20px; cursor:pointer; }
+.pf-save-card p { margin:0 0 14px; color:#b4b8c2; font-size:13px; line-height:1.45; }
+.pf-save-btn { display:block; text-align:center; background:#0d99ff; color:#fff; text-decoration:none; font-weight:600; padding:10px 14px; border-radius:8px; }
+.pf-save-btn:hover { filter:brightness(1.08); }
+.pf-save-preview { display:block; max-width:100%; max-height:220px; margin:12px auto 0; border-radius:8px; background:#111; }
+.pf-save-copy { margin-top:10px; width:100%; border:1px solid rgba(255,255,255,.12); background:transparent; color:#ccc; padding:8px; border-radius:8px; cursor:pointer; }
+
+
+/* File tab — pages above layers (Figma) */
+#ed-pages, .ed-ltab[data-tab="pages"] { display:none !important; }
+.pf-file-pages { flex:none; border-bottom:1px solid var(--hairline); padding:4px 0 2px; }
+.pf-file-head { display:flex; align-items:center; justify-content:space-between; padding:6px 10px 4px; font-size:10.5px; font-weight:650; letter-spacing:.04em; text-transform:uppercase; color:var(--txt-faint); }
+.pf-file-head .mini { width:22px; height:22px; }
+.pf-file-layers-head { padding-top:8px; border-top:1px solid var(--hairline); margin-top:4px; }
+.pf-pg-row { display:flex; align-items:center; gap:8px; height:28px; padding:0 10px 0 12px; cursor:pointer; color:var(--txt-mid); font-size:12px; }
+.pf-pg-row:hover { background:rgba(255,255,255,.05); color:#fff; }
+.pf-pg-row.on { background:var(--accent-active); color:#fff; }
+.pf-pg-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pf-pg-del { opacity:0; }
+.pf-pg-row:hover .pf-pg-del, .pf-pg-row.on .pf-pg-del { opacity:1; }
+.ly-row.hidden .ly-name { opacity:.38; text-decoration:line-through; }
+.ly-row.locked .ly-name { opacity:.62; }
+.ly-row.locked .ly-lock { opacity:1 !important; color:var(--warn); }
+.ly-row.comp .ly-ico, .ly-row.comp .ly-name { color:#a259ff; }
+.ly-row.inst .ly-ico { color:#a259ff; }
+.ly-row.section .ly-name { font-weight:650; }
+.ly-row.hover { background:rgba(13,153,255,.12); }
+.ly-tools { opacity:0; }
+.ly-row.locked .ly-tools, .ly-row.hidden .ly-tools { opacity:1; }
+
+/* Figma-style inspector Export */
+.pf-export-sec .pf-ex-row { display:grid; grid-template-columns:52px 64px 1fr 28px; gap:4px; align-items:center; margin:4px 0; }
+.pf-export-sec .pf-ex-row input, .pf-export-sec .pf-ex-row select { width:100%; min-width:0; }
+.pf-ex-bg { display:flex; gap:6px; align-items:center; margin:6px 0; font-size:12px; color:var(--txt-dim); }
+
+.pf-tidy-sec .ed-btn { width:100%; margin:4px 0; }
+
+.pf-px-hint { padding:4px 10px 8px; max-width:220px; line-height:1.35; }
+
+.ly-row.top-frame .ly-name { font-weight: 700; color: #f2f2f2; }
+.pf-frame-sec select { width: 100%; min-width: 0; }
+
+.pf-rad-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:0 0 6px; }
+.pf-rad-grid input { width:100%; min-width:0; }
+.pf-smooth-row { align-items:center; gap:8px; }
+.pf-smooth-row input[type="range"] { flex:1; min-width:60px; }
+
+.ed-save-state { font-size:10.5px; color:var(--txt-faint); padding:0 6px; white-space:nowrap; }
+.pf-ex-adv { padding:6px 0 4px; }
+.pf-ex-adv .chk { display:flex; align-items:center; gap:6px; margin:4px 0; font-size:12px; color:var(--txt-dim); }
+
+/* =============================================================
+   FIGMA UI3 SKIN — last cascade. Must beat studio v6.
+   https://www.figma.com/blog/behind-our-redesign-ui3/
+   ============================================================= */
+body.pf-ui3 {
+  --accent: #0d99ff;
+  --accent-2: #0b8ce6;
+  --accent-hover: rgba(13,153,255,.08);
+  --accent-soft: rgba(13,153,255,.16);
+  --accent-active: rgba(13,153,255,.22);
+  --accent-ring: 0 0 0 2px rgba(13,153,255,.35);
+  --chrome: #2c2c2c;
+  --chrome-2: #383838;
+  --txt: #ffffff;
+  --txt-mid: #e6e6e6;
+  --txt-dim: #b3b3b3;
+  --txt-faint: #8d8d8d;
+}
+
+body.pf-ui3 #view-editor { background: #1e1e1e; }
+
+/* —— Top bar: 40px, almost empty like Figma —— */
+body.pf-ui3 #view-editor .ed-top {
+  height: 40px; min-height: 40px; padding: 0 8px 0 6px; gap: 2px;
+  background: #2c2c2c; border-bottom: 1px solid #1e1e1e;
+  box-shadow: none; backdrop-filter: none;
+}
+body.pf-ui3 .ed-brand { padding: 0 4px 0 0; }
+body.pf-ui3 .ed-brand > span:last-child { display: none; }
+body.pf-ui3 .ed-brand-mark {
+  width: 24px; height: 24px; border-radius: 6px;
+  background: #0d99ff; box-shadow: none; font-size: 11px; font-weight: 700;
+}
+body.pf-ui3 .ed-filename-wrap { max-width: 280px; padding: 0 4px; }
+body.pf-ui3 .ed-filename { font-size: 13px; font-weight: 500; padding: 3px 6px; }
+body.pf-ui3 .ed-pagename { display: none; }
+body.pf-ui3 .ed-save-state { font-size: 11px; color: #8d8d8d; padding: 0 8px; }
+body.pf-ui3 .ed-command-trigger { min-width: 32px; width: 32px; padding: 0; justify-content: center; background: transparent; border: 0; }
+body.pf-ui3 .ed-command-trigger span,
+body.pf-ui3 .ed-command-trigger kbd { display: none !important; }
+body.pf-ui3 .ed-top-center,
+body.pf-ui3 .ed-local-state,
+body.pf-ui3 #ed-share,
+body.pf-ui3 #ed-versions,
+body.pf-ui3 #ed-plugins,
+body.pf-ui3 #ed-help,
+body.pf-ui3 #ed-health,
+body.pf-ui3 #ed-focus,
+body.pf-ui3 .ed-top-divider { display: none !important; }
+body.pf-ui3 #ed-dev,
+body.pf-ui3 #ed-present {
+  width: 32px; min-width: 32px; padding: 0; justify-content: center;
+  background: transparent; border: 0; color: #b3b3b3; height: 32px;
+}
+body.pf-ui3 #ed-dev svg + *,
+body.pf-ui3 #ed-present svg + * { display: none; }
+body.pf-ui3 #ed-export {
+  height: 32px; padding: 0 12px; margin-left: 6px;
+  font-size: 12px; font-weight: 500;
+  background: #0d99ff; border: 0; color: #fff; border-radius: 6px;
+}
+body.pf-ui3 #ed-export:hover { background: #0b8ce6; }
+body.pf-ui3 .ed-iconbtn { width: 32px; height: 32px; color: #b3b3b3; }
+body.pf-ui3 .ed-iconbtn:hover { background: rgba(255,255,255,.08); color: #fff; }
+
+/* —— Side panels —— */
+body.pf-ui3 .ed-body { gap: 0; background: #1e1e1e; }
+body.pf-ui3 .ed-left {
+  width: 241px; min-width: 200px; background: #2c2c2c;
+  border-right: 1px solid #1e1e1e;
+}
+body.pf-ui3 .ed-right {
+  width: 241px; min-width: 220px; background: #2c2c2c;
+  border-left: 1px solid #1e1e1e;
+}
+body.pf-ui3 .ed-left-tabs {
+  height: 40px; padding: 0 8px; gap: 0;
+  background: #2c2c2c; border-bottom: 1px solid #1e1e1e;
+  justify-content: flex-start;
+}
+body.pf-ui3 .ed-ltab {
+  flex: 0 0 auto; width: auto !important; height: 40px;
+  padding: 0 10px !important; font-size: 11px; font-weight: 500;
+  border-radius: 0 !important; background: transparent; color: #8d8d8d;
+}
+body.pf-ui3 .ed-ltab.active {
+  background: transparent; color: #fff;
+}
+body.pf-ui3 .ed-ltab.active:after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: 0;
+  height: 2px; background: #fff; border-radius: 0;
+}
+body.pf-ui3 .ed-ltab[data-tab="pages"] { display: none !important; }
+body.pf-ui3 .pf-collapse,
+body.pf-ui3 [data-collapse-all] {
+  width: 24px; min-width: 24px; margin-left: auto; opacity: .4; border: 0; background: transparent; color: #fff;
+}
+
+body.pf-ui3 .ly-search-wrap {
+  display: flex; align-items: center;
+  margin: 8px 8px 4px !important;
+  background: #1e1e1e; border: 0;
+  border-radius: 6px; padding: 0 8px; height: 28px;
+}
+body.pf-ui3 .ly-search { border: 0 !important; background: transparent !important; height: 28px; font-size: 12px; color: #fff; }
+body.pf-ui3 #ly-filter { display: none !important; }
+body.pf-ui3 .ly-row { min-height: 32px; margin: 0; border-radius: 0; padding-right: 8px; }
+body.pf-ui3 .ly-row:hover { background: #383838; }
+body.pf-ui3 .ly-row.sel { background: #0d99ff !important; color: #fff; border-right: 0; }
+body.pf-ui3 .ly-row.top-frame .ly-name { font-weight: 600; }
+body.pf-ui3 .pf-file-pages { border-bottom: 1px solid #1e1e1e; padding-bottom: 4px; }
+
+/* —— UI3 toolbelt: bottom center, horizontal —— */
+body.pf-ui3 .ed-toolbar.pf-rail,
+body.pf-ui3 .ed-toolbar {
+  top: auto !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: 16px !important;
+  transform: translateX(-50%) !important;
+  flex-direction: row !important;
+  align-items: center;
+  max-height: none; overflow: visible;
+  padding: 6px 8px; gap: 2px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px;
+  background: #2c2c2c;
+  box-shadow: 0 4px 24px rgba(0,0,0,.4);
+  backdrop-filter: none;
+}
+body.pf-ui3 .tool {
+  width: 40px; height: 40px; border-radius: 10px; color: #e6e6e6;
+}
+body.pf-ui3 .tool .icon { width: 24px; height: 24px; }
+body.pf-ui3 .ly-ico .icon { width: 14px; height: 14px; stroke-width: 2; }
+body.pf-ui3 .tool:hover { background: #383838; color: #fff; }
+body.pf-ui3 .tool.active {
+  background: #0d99ff !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+body.pf-ui3 .tool.has-fly:after {
+  content: "";
+  position: absolute; right: 4px; bottom: 4px;
+  width: 0; height: 0;
+  border: 3px solid transparent;
+  border-right-color: currentColor;
+  border-bottom-color: currentColor;
+  opacity: .5;
+}
+body.pf-ui3 .ed-toolbar .tb-sep { display: none !important; }
+
+body.pf-ui3 .pf-flyout,
+body.pf-ui3 .pf-fly-up {
+  background: #2c2c2c; border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px; padding: 4px; min-width: 180px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+}
+body.pf-ui3 .pf-flyout button {
+  height: 32px; border-radius: 6px; padding: 0 8px;
+  color: #e6e6e6; gap: 8px;
+}
+body.pf-ui3 .pf-flyout button:hover { background: #0d99ff; color: #fff; }
+
+body.pf-ui3 .ed-zoom {
+  right: 12px; bottom: 20px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: #2c2c2c;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.3);
+}
+body.pf-ui3 .ed-zoom button { width: 28px; height: 28px; color: #b3b3b3; }
+body.pf-ui3 #zoom-pct { min-width: 44px; height: 28px; font-size: 11px; font-weight: 500; color: #e6e6e6; }
+
+body.pf-ui3 .ed-canvas-wrap { background: #383838; }
+body.pf-ui3 .ed-status {
+  bottom: 64px; background: #2c2c2c; border: 0; color: #e6e6e6;
+  font-size: 11px; padding: 4px 8px; border-radius: 6px;
+}
+
+/* —— Inspector —— */
+body.pf-ui3 .studio-empty-ins.pf-quiet-empty,
+body.pf-ui3 .studio-empty-ins {
+  padding: 40px 16px !important; text-align: center;
+}
+body.pf-ui3 .studio-empty-ins .ph-icon,
+body.pf-ui3 .studio-empty-ins .studio-empty-actions,
+body.pf-ui3 .studio-empty-ins .keys,
+body.pf-ui3 .studio-empty-ins p { display: none !important; }
+body.pf-ui3 .studio-empty-ins h3 {
+  font-size: 11px; font-weight: 500; color: #8d8d8d; margin: 0;
+}
+
+body.pf-ui3 .ins-tabs {
+  height: 40px; padding: 0 8px; gap: 0;
+  background: #2c2c2c; backdrop-filter: none;
+  border-bottom: 1px solid #1e1e1e;
+  grid-template-columns: repeat(3, 1fr);
+}
+body.pf-ui3 .ins-tabs button {
+  font-size: 11px; font-weight: 500; background: transparent;
+  border-radius: 0; color: #8d8d8d;
+}
+body.pf-ui3 .ins-tabs button.active { background: transparent; color: #fff; }
+body.pf-ui3 .ins-tabs button.active:after {
+  left: 18%; right: 18%; bottom: 0; height: 2px; background: #fff; border-radius: 0;
+}
+body.pf-ui3 .ins-sec {
+  padding: 8px 12px;
+  border-bottom: 1px solid #1e1e1e !important;
+}
+body.pf-ui3 .ins-head, body.pf-ui3 .ins-sec-title {
+  font-size: 11px; font-weight: 500; color: #8d8d8d; text-transform: none; letter-spacing: 0;
+}
+body.pf-ui3 .ins-sec input[type="number"],
+body.pf-ui3 .ins-sec input[type="text"],
+body.pf-ui3 .ins-sec select {
+  background: #1e1e1e; border: 1px solid transparent; color: #fff;
+  height: 28px; border-radius: 6px; font-size: 11px;
+}
+body.pf-ui3 .ins-sec input:focus,
+body.pf-ui3 .ins-sec select:focus {
+  border-color: #0d99ff !important; box-shadow: none !important;
+}
+
+body.pf-ui3 #pf-persist-banner { display: none !important; }

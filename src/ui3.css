@@ -1,0 +1,348 @@
+/* ui3.css — Figma UI3 design system. Loaded last so it wins.
+ * https://www.figma.com/blog/behind-our-redesign-ui3/
+ * Canvas first. Slim chrome. One accent. Readable icons.
+ */
+@import url("https://rsms.me/inter/inter.css");
+
+#view-editor,
+body.pf-ui3 {
+  --fig-bg: #1e1e1e;
+  --fig-chrome: #2c2c2c;
+  --fig-chrome-2: #383838;
+  --fig-canvas: #383838;
+  --fig-line: #444444;
+  --fig-text: #ffffff;
+  --fig-muted: #b3b3b3;
+  --fig-faint: #8d8d8d;
+  --fig-blue: #0d99ff;
+  --fig-blue-2: #0b8ce6;
+  --fig-sel: #0d99ff;
+  --fig-input: #1e1e1e;
+  --fig-hover: rgba(255, 255, 255, 0.08);
+  --fig-font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --accent: #0d99ff;
+  --accent-2: #0b8ce6;
+  --accent-soft: rgba(13, 153, 255, 0.16);
+  --accent-active: #0d99ff;
+  --chrome: #2c2c2c;
+  --txt: #ffffff;
+  --txt-mid: #e6e6e6;
+  --txt-dim: #b3b3b3;
+  --txt-faint: #8d8d8d;
+}
+
+#view-editor {
+  font-family: var(--fig-font);
+  background: var(--fig-bg);
+  color: var(--fig-text);
+  letter-spacing: -0.01em;
+}
+
+#view-editor .icon {
+  shape-rendering: geometricPrecision;
+  overflow: visible;
+}
+
+/* ========== TOP BAR 40px ========== */
+#view-editor .ed-top {
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 0 8px 0 6px !important;
+  gap: 2px !important;
+  background: var(--fig-chrome) !important;
+  border-bottom: 1px solid #1e1e1e !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+#view-editor .ed-brand > span:last-child { display: none !important; }
+#view-editor .ed-brand-mark {
+  width: 24px; height: 24px; border-radius: 6px;
+  background: var(--fig-blue) !important;
+  box-shadow: none !important;
+  font-size: 11px; font-weight: 700;
+}
+#view-editor .ed-filename {
+  font-size: 13px; font-weight: 500; color: #fff;
+  padding: 2px 6px; border-radius: 5px;
+}
+#view-editor .ed-pagename { display: none !important; }
+#view-editor .ed-command-trigger {
+  width: 32px; min-width: 32px; padding: 0;
+  justify-content: center; background: transparent; border: 0;
+}
+#view-editor .ed-command-trigger span,
+#view-editor .ed-command-trigger kbd { display: none !important; }
+#view-editor .ed-top-center,
+#view-editor .ed-local-state,
+#view-editor #ed-share,
+#view-editor #ed-versions,
+#view-editor #ed-plugins,
+#view-editor #ed-help,
+#view-editor #ed-health,
+#view-editor #ed-focus,
+#view-editor .ed-top-divider { display: none !important; }
+#view-editor #ed-dev,
+#view-editor #ed-present {
+  width: 32px; min-width: 32px; height: 32px; padding: 0;
+  justify-content: center; background: transparent; border: 0; color: var(--fig-muted);
+}
+#view-editor #ed-dev svg + *,
+#view-editor #ed-present svg + * { display: none !important; }
+#view-editor #ed-export {
+  height: 32px; padding: 0 12px; margin-left: 8px;
+  font-size: 12px; font-weight: 500;
+  background: var(--fig-blue) !important;
+  border: 0 !important; color: #fff !important;
+  border-radius: 6px;
+}
+#view-editor #ed-export:hover { background: var(--fig-blue-2) !important; }
+#view-editor .ed-iconbtn {
+  width: 32px; height: 32px; color: var(--fig-muted);
+  background: transparent; border: 0; border-radius: 6px;
+}
+#view-editor .ed-iconbtn:hover { background: var(--fig-hover); color: #fff; }
+#view-editor .ed-save-state { font-size: 11px; color: var(--fig-faint); padding: 0 8px; }
+
+/* ========== PANELS ========== */
+#view-editor .ed-body { gap: 0; background: var(--fig-bg); }
+#view-editor .ed-left {
+  width: 241px; min-width: 180px; max-width: 420px;
+  background: var(--fig-chrome);
+  border-right: 1px solid #1e1e1e;
+  position: relative;
+}
+#view-editor .ed-right {
+  width: 241px; min-width: 200px; max-width: 420px;
+  background: var(--fig-chrome);
+  border-left: 1px solid #1e1e1e;
+  position: relative;
+}
+#view-editor .pf-resize {
+  position: absolute; top: 0; bottom: 0; width: 4px; cursor: col-resize; z-index: 8;
+}
+#view-editor .pf-resize.left { right: -2px; }
+#view-editor .pf-resize.right { left: -2px; }
+#view-editor .pf-resize:hover { background: var(--fig-blue); }
+
+#view-editor .ed-left-tabs {
+  height: 40px; padding: 0 8px; gap: 0;
+  background: var(--fig-chrome);
+  border-bottom: 1px solid #1e1e1e;
+  justify-content: flex-start;
+}
+#view-editor .ed-ltab {
+  flex: 0 0 auto !important; width: auto !important; height: 40px;
+  padding: 0 10px !important; font-size: 11px; font-weight: 500;
+  border-radius: 0 !important; background: transparent !important;
+  color: var(--fig-faint);
+}
+#view-editor .ed-ltab.active { color: #fff !important; background: transparent !important; }
+#view-editor .ed-ltab.active:after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: 0;
+  height: 2px; background: #fff; border-radius: 0;
+}
+#view-editor .ed-ltab[data-tab="pages"] { display: none !important; }
+#view-editor [data-collapse-all] {
+  margin-left: auto; width: 24px; min-width: 24px; padding: 0;
+  background: transparent; border: 0; color: var(--fig-faint); font-size: 16px;
+}
+
+#view-editor .ly-search-wrap {
+  display: flex; align-items: center;
+  margin: 8px !important; height: 28px; padding: 0 8px;
+  background: var(--fig-input); border: 0; border-radius: 6px;
+}
+#view-editor .ly-search {
+  border: 0 !important; background: transparent !important;
+  height: 28px; font-size: 12px; color: #fff;
+}
+#view-editor #ly-filter { display: none !important; }
+#view-editor .ly-row {
+  min-height: 32px; margin: 0; border-radius: 0; color: #fff;
+}
+#view-editor .ly-row:hover { background: var(--fig-chrome-2); }
+#view-editor .ly-row.sel {
+  background: var(--fig-blue) !important; color: #fff; border: 0 !important;
+}
+#view-editor .ly-name { font-size: 12px; font-weight: 450; }
+#view-editor .ly-row.top-frame .ly-name { font-weight: 600; }
+#view-editor .ly-al, #view-editor .ly-mask {
+  background: rgba(255,255,255,.12) !important; color: #fff !important;
+  font-size: 9px; border-radius: 3px;
+}
+
+/* ========== TOOLBELT — bottom center ========== */
+#view-editor .ed-toolbar {
+  top: auto !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: 16px !important;
+  transform: none;
+  flex-direction: row !important;
+  align-items: center;
+  max-height: none !important;
+  overflow: visible !important;
+  padding: 6px 8px !important;
+  gap: 2px !important;
+  border: 1px solid rgba(255,255,255,.1) !important;
+  border-radius: 12px !important;
+  background: var(--fig-chrome) !important;
+  box-shadow: 0 8px 28px rgba(0,0,0,.45) !important;
+  backdrop-filter: none !important;
+}
+#view-editor .tool {
+  width: 40px; height: 40px; border-radius: 10px; color: #e6e6e6;
+}
+#view-editor .tool .icon { width: 24px !important; height: 24px !important; }
+#view-editor .tool:hover { background: var(--fig-chrome-2); color: #fff; }
+#view-editor .tool.active {
+  background: var(--fig-blue) !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+#view-editor .tool.has-fly:after {
+  content: "";
+  position: absolute; right: 5px; bottom: 5px;
+  width: 0; height: 0;
+  border: 3px solid transparent;
+  border-right-color: currentColor;
+  border-bottom-color: currentColor;
+  opacity: .45;
+}
+#view-editor .ed-toolbar .tb-sep { display: none !important; }
+#view-editor .tool-key { display: none !important; }
+
+#view-editor .ed-zoom {
+  right: 12px; bottom: 20px;
+  border: 1px solid rgba(255,255,255,.1);
+  background: var(--fig-chrome);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.3);
+}
+#view-editor .ed-zoom button { width: 28px; height: 28px; color: var(--fig-muted); }
+#view-editor #zoom-pct {
+  min-width: 48px; height: 28px; font-size: 11px; font-weight: 500; color: #fff;
+}
+
+#view-editor .ed-canvas-wrap { background: var(--fig-canvas); }
+#view-editor .ed-status {
+  bottom: 68px; background: var(--fig-chrome); border: 0; color: #fff;
+  font-size: 11px; padding: 4px 8px; border-radius: 6px;
+}
+
+.pf-flyout, .pf-fly-up {
+  background: var(--fig-chrome) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  border-radius: 8px !important;
+  padding: 4px !important;
+  min-width: 196px;
+  box-shadow: 0 10px 32px rgba(0,0,0,.5) !important;
+}
+.pf-flyout button {
+  height: 32px !important; border-radius: 6px !important;
+  padding: 0 8px !important; color: #fff !important; gap: 8px;
+  font-size: 12px;
+}
+.pf-flyout button:hover { background: var(--fig-blue) !important; }
+
+/* ========== INSPECTOR ========== */
+#view-editor .ins-tabs {
+  height: 40px; padding: 0 4px; gap: 0;
+  background: var(--fig-chrome);
+  border-bottom: 1px solid #1e1e1e;
+  backdrop-filter: none;
+  grid-template-columns: repeat(3, 1fr);
+}
+#view-editor .ins-tabs button {
+  font-size: 11px; font-weight: 500; background: transparent;
+  border-radius: 0; color: var(--fig-faint);
+}
+#view-editor .ins-tabs button.active { background: transparent; color: #fff; }
+#view-editor .ins-tabs button.active:after {
+  left: 16%; right: 16%; bottom: 0; height: 2px;
+  background: #fff; border-radius: 0;
+}
+#view-editor .ins-sec {
+  padding: 8px 12px;
+  border-bottom: 1px solid #1e1e1e !important;
+}
+#view-editor .ins-head,
+#view-editor .ins-sec-title {
+  font-size: 11px; font-weight: 500; color: var(--fig-faint);
+  text-transform: none; letter-spacing: 0; margin: 0 0 6px;
+}
+#view-editor .ins-grid { gap: 4px 6px; margin-bottom: 4px; }
+#view-editor .ins-grid label,
+#view-editor .ins-lbl {
+  font-size: 11px; color: var(--fig-faint); text-transform: none;
+}
+#view-editor .ins-sec input[type="number"],
+#view-editor .ins-sec input[type="text"],
+#view-editor .ins-sec select,
+#view-editor .ins-num {
+  background: var(--fig-input) !important;
+  border: 1px solid transparent !important;
+  color: #fff !important;
+  height: 28px; border-radius: 6px; font-size: 11px;
+  padding: 0 8px;
+}
+#view-editor .ins-sec input:focus,
+#view-editor .ins-sec select:focus {
+  border-color: var(--fig-blue) !important;
+  box-shadow: none !important;
+}
+#view-editor .ed-btn.sm {
+  height: 28px; padding: 0 8px; background: var(--fig-chrome-2);
+  border: 0; color: #fff; border-radius: 6px;
+}
+#view-editor .align-row {
+  display: flex; gap: 2px; padding: 2px 0 6px;
+}
+#view-editor .align-row .al-dir,
+#view-editor .al-dir {
+  width: 28px; height: 28px; border: 0; background: transparent;
+  color: var(--fig-muted); border-radius: 6px;
+}
+#view-editor .al-dir:hover { background: var(--fig-hover); color: #fff; }
+#view-editor .al-dir.on { background: var(--fig-blue); color: #fff; }
+
+#view-editor .studio-empty-ins {
+  padding: 48px 16px !important; text-align: center;
+}
+#view-editor .studio-empty-ins .ph-icon,
+#view-editor .studio-empty-ins .studio-empty-actions,
+#view-editor .studio-empty-ins .keys,
+#view-editor .studio-empty-ins p { display: none !important; }
+#view-editor .studio-empty-ins h3 {
+  font-size: 11px; font-weight: 500; color: var(--fig-faint); margin: 0;
+}
+
+#view-editor .fill-row, #view-editor .sh-row {
+  background: var(--fig-input); border-radius: 6px; padding: 4px;
+}
+
+/* menus */
+.pf-menu {
+  background: var(--fig-chrome) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5) !important;
+  padding: 6px !important;
+  min-width: 220px;
+  font-family: var(--fig-font);
+}
+.pf-menu button {
+  height: 32px; border-radius: 6px; padding: 0 10px;
+  font-size: 12px; color: #fff;
+}
+.pf-menu button:hover { background: var(--fig-blue) !important; color: #fff; }
+.pf-menu .pf-title {
+  font-size: 11px; color: var(--fig-faint); padding: 6px 10px 4px;
+  text-transform: none; letter-spacing: 0;
+}
+.pf-menu hr { border-color: #444; margin: 4px 0; }
+
+#pf-persist-banner { display: none !important; }
+
+#view-editor.focus-canvas .ed-left,
+#view-editor.focus-canvas .ed-right { display: none; }

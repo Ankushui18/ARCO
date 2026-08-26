@@ -22,7 +22,7 @@
     // view.cam* are the true camera; view.zoom/ox/oy on App is the live copy.
     // canvasColor: canvas background (like Figma: light/dark/black/custom).
     // pixelPreview: when true, show faint 1px pixel grid at ≥800% zoom.
-    view: { zoom: 1, ox: 80, oy: 80, rulers: true, grid: null, gridSize: 10, snap: true, magnet: false, pixelPreview: true, canvasColor: '#383838' },
+    view: { zoom: 1, ox: 80, oy: 80, rulers: true, grid: null, gridSize: 10, snap: true, magnet: false, pixelPreview: false, canvasColor: '#383838' },
     marquee: null,
     space: false,
     history: new M.History(),
@@ -223,9 +223,8 @@
       <div class="ed-body">
         <div class="ed-left">
           <div class="ed-left-tabs">
-            <button class="ed-ltab active" data-tab="layers" title="Layers">${Ico('layers',{size:14})}<span>Layers</span></button>
+            <button class="ed-ltab active" data-tab="layers" title="File — pages and layers">${Ico('layers',{size:14})}<span>File</span></button>
             <button class="ed-ltab" data-tab="assets" title="Assets">${Ico('component',{size:14})}<span>Assets</span></button>
-            <button class="ed-ltab" data-tab="pages" title="Pages">${Ico('pages',{size:14})}<span>Pages</span></button>
             <button class="ed-ltab" data-tab="vars" title="Variables">${Ico('tokens',{size:14})}<span>Variables</span></button>
           </div>
           <div class="ed-left-content">
@@ -271,7 +270,7 @@
         <div class="ed-right" id="ed-right"></div>
       </div>`;
       this.canvas = ed.querySelector('#ed-canvas');
-      this.ctx = this.canvas.getContext ? this.canvas.getContext('2d') : null;
+      this.ctx = this.canvas.getContext ? this.canvas.getContext('2d', { alpha: false }) : null;
       this.bindCanvas();
       const self = this;
       ed.querySelector('#ed-back').addEventListener('click', () => self.goDashboard());
@@ -874,10 +873,14 @@
       if (!c) return;
       const rect = c.parentElement.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      c.width = Math.max(1, rect.width * dpr);
-      c.height = Math.max(1, rect.height * dpr);
-      c.style.width = rect.width + 'px';
-      c.style.height = rect.height + 'px';
+      // Integer CSS size + integer backing store. Fractional width*dpr is
+      // why the viewport looked blurry — the browser resampled the bitmap.
+      const cssW = Math.max(1, Math.round(rect.width));
+      const cssH = Math.max(1, Math.round(rect.height));
+      c.width = Math.max(1, Math.round(cssW * dpr));
+      c.height = Math.max(1, Math.round(cssH * dpr));
+      c.style.width = cssW + 'px';
+      c.style.height = cssH + 'px';
       if (this.ctx) {
         // Setting c.width resets the backing store to transparent black. If
         // we don't immediately paint the canvas color, the user sees a 1-frame
@@ -887,8 +890,10 @@
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.globalAlpha = 1;
         ctx.globalCompositeOperation = 'source-over';
+        if ('imageSmoothingEnabled' in ctx) ctx.imageSmoothingEnabled = true;
+        if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
         ctx.fillStyle = (this.view && this.view.canvasColor) || '#383838';
-        ctx.fillRect(0, 0, rect.width, rect.height);
+        ctx.fillRect(0, 0, cssW, cssH);
       }
     },
     toWorld(e) {
@@ -2685,6 +2690,7 @@
         { label: 'Deselect', hint: 'Esc', kw: '', run: () => { A.sel = []; A.markDirty(); } },
       ];
     },
+    commandPalette() { this.palette(); },
     palette() {
       if (this._paletteEl) { this.paletteClose(); return; }
       const el = document.createElement('div');
@@ -3109,8 +3115,9 @@
       const size = () => {
         const r = stage.getBoundingClientRect();
         for (const c of [cA, cB]) {
-          c.width = Math.max(1, r.width); c.height = Math.max(1, r.height);
-          c.style.width = r.width + 'px'; c.style.height = r.height + 'px';
+          const cw = Math.max(1, Math.round(r.width)), ch = Math.max(1, Math.round(r.height));
+          c.width = cw; c.height = ch;
+          c.style.width = cw + 'px'; c.style.height = ch + 'px';
         }
       };
       size();

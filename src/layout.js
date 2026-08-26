@@ -122,15 +122,15 @@
         natCross: sh === 'fixed' ? (horizontal ? k.h : k.w) : mm[horizontal ? 'h' : 'w'],
       };
     });
-    // Determine container size (hug if no explicit size, else fixed).
+    // Hug if the container is hugging that axis (als.hug or unset size).
     let cw = n.w, ch = n.h;
-    if (!cw || cw < 1) {
+    if (isHugW(n) || !cw || cw < 1) {
       if (horizontal) cw = items.reduce((s,it)=>s+it.natMain,0) + Math.max(0,items.length-1)*gap + padL+padR;
-      else cw = Math.max(1, ...items.map(i=>i.natCross)) + padL+padR;
+      else cw = Math.max(1, ...items.map(i=>i.natCross), 1) + padL+padR;
     }
-    if (!ch || ch < 1) {
+    if (isHugH(n) || !ch || ch < 1) {
       if (!horizontal) ch = items.reduce((s,it)=>s+it.natMain,0) + Math.max(0,items.length-1)*gap + padT+padB;
-      else ch = Math.max(1, ...items.map(i=>i.natCross)) + padT+padB;
+      else ch = Math.max(1, ...items.map(i=>i.natCross), 1) + padT+padB;
     }
     let main, cross;
     if (al.wrap) {
@@ -152,9 +152,9 @@
       // Cross axis (non-wrap): use the MAX child cross size, not SUM.
       cross = items.reduce((s,it)=>Math.max(s, it.natCross), 0);
     }
-    // Adjust hug size if content exceeds fixed.
-    if (!n.w || n.w < 1) cw = (horizontal ? padL+main+padR : padL+cross+padR);
-    if (!n.h || n.h < 1) ch = (horizontal ? padT+cross+padB : padT+main+padB);
+    // Adjust hug size from content (Figma: hug ignores the stored w/h).
+    if (isHugW(n) || !n.w || n.w < 1) cw = (horizontal ? padL+main+padR : padL+cross+padR);
+    if (isHugH(n) || !n.h || n.h < 1) ch = (horizontal ? padT+cross+padB : padT+main+padB);
     n._cSize = { w: cw, h: ch };
     return { w: cw, h: ch };
   }
@@ -262,13 +262,21 @@
     }
   }
 
+  function parentHugs(page, k, axis) {
+    const p = k.parent ? page.nodes[k.parent] : null;
+    if (!p) return false;
+    return axis === 'w' ? isHugW(p) : isHugH(p);
+  }
   function buildItem(page, k, horizontal) {
     const mm = k._measured;
-    const sw = k.als ? (horizontal ? k.als.w : k.als.h) : 'fixed';
-    const sh = k.als ? (horizontal ? k.als.h : k.als.w) : 'fixed';
+    let sw = k.als ? (horizontal ? k.als.w : k.als.h) : 'fixed';
+    let sh = k.als ? (horizontal ? k.als.h : k.als.w) : 'fixed';
+    // Figma: fill on a hugging parent is treated as hug (no leftover space).
+    if (sw === 'fill' && parentHugs(page, k, horizontal ? 'w' : 'h')) sw = 'hug';
+    if (sh === 'fill' && parentHugs(page, k, horizontal ? 'h' : 'w')) sh = 'hug';
     return {
       k, sw, sh,
-      grow: (k.als && k.als.grow > 0) ? k.als.grow : (sw === 'fill' ? 1 : 0),
+      grow: (k.als && k.als.grow > 0 && sw === 'fill') ? k.als.grow : (sw === 'fill' ? 1 : 0),
       natMain: sw === 'fill' ? 0 : (sw === 'fixed' ? (horizontal ? k.w : k.h) : mm[horizontal ? 'w' : 'h']),
       natCross: sh === 'fixed' ? (horizontal ? k.h : k.w) : mm[horizontal ? 'h' : 'w'],
     };

@@ -383,6 +383,7 @@
         radii[3] != null ? radii[3] : u,
       ];
     }
+    if (fn.cornerSmoothing != null) n.cornerSmooth = Math.max(0, Math.min(1, +fn.cornerSmoothing || 0));
     // effects
     n.shadows = (fn.effects || []).filter(e => e.type === 'DROP_SHADOW' && e.visible !== false).map(e => ({
       color: fcolor(e.color), opacity: (e.color ? e.color.a : 1), x: (e.offset && e.offset.x) || 0, y: (e.offset && e.offset.y) || 0,
@@ -735,7 +736,13 @@
     const images = [];
     for (const page of doc.pages) for (const n of Object.values(page.nodes)) {
       for (const f of n.fills || []) {
-        if (f.type === 'image' && f.hash && f.src) {
+        if (f.type === 'image' && f.src) {
+          if (!f.hash) {
+            let h = 2166136261;
+            const s = f.src.slice(0, 4096);
+            for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+            f.hash = ('00000000' + (h >>> 0).toString(16)).slice(-8) + '000000000000000000000000';
+          }
           const b64 = f.src.split(',')[1];
           if (b64) images.push([f.hash, b64]);
         }
@@ -769,7 +776,7 @@
       node.parentIndex = { guid: parentGuid || topGuid, position: String(i).padStart(6, '0') };
       out.push(node);
       i++;
-      if (n.children.length) emitTree(page, guid, n.children, out, topGuid, next, doc, docVars, ctx);
+      if (n.children.length) emitTree(page, guid, n.children, out, topGuid, next, doc, docVars, ctx, guidOf);
     }
   }
 
@@ -781,7 +788,18 @@
     // reference field is overriddenSymbolID, not mainComponentGuid).
     out.type = (n.type === 'frame' && n.isComponent) ? 'SYMBOL' : (typeMap[n.type] || 'FRAME');
     out.size = { x: n.w, y: n.h };
-    out.transform = { m00: 1, m01: 0, m02: n.x, m10: 0, m11: 1, m12: n.y };
+    {
+      const rot = n.rotation || 0;
+      const fh = n.flipH ? -1 : 1, fv = n.flipV ? -1 : 1;
+      const cos = Math.cos(rot), sin = Math.sin(rot);
+      const cx = (n.w || 0) / 2, cy = (n.h || 0) / 2;
+      out.transform = {
+        m00: cos * fh, m01: -sin * fv,
+        m02: (n.x || 0) + cx - cos * fh * cx + sin * fv * cy,
+        m10: sin * fh, m11: cos * fv,
+        m12: (n.y || 0) + cy - sin * fh * cx - cos * fv * cy,
+      };
+    }
     out.visible = n.visible;
     out.opacity = n.opacity;
     out.blendMode = (n.blend || 'normal').toUpperCase();
@@ -824,6 +842,7 @@
     if (n.type === 'rect') {
       const r = n.radius;
       if (r.every(v => v === r[0]) && r[0] > 0) out.cornerRadius = r[0];
+      if (n.cornerSmooth) out.cornerSmoothing = n.cornerSmooth;
       else if (r.some(v => v > 0)) {
         out.rectangleTopLeftCornerRadius = r[0];
         out.rectangleTopRightCornerRadius = r[1];
@@ -918,10 +937,20 @@
         visible: true,
       };
     }
-    if (f.type === 'image' && f.hash) {
+    if (f.type === 'image' && (f.hash || f.src)) {
+      let hash = f.hash;
+      if (!hash && f.src) {
+        // Stable short hash so the image is packed into the .fig even when
+        // the fill never went through an import.
+        let h = 2166136261;
+        const s = f.src.slice(0, 4096);
+        for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+        hash = ('00000000' + (h >>> 0).toString(16)).slice(-8) + '000000000000000000000000';
+        f.hash = hash;
+      }
       return {
         type: 'IMAGE',
-        image: { hash: b64Bytes(f.hash) },
+        image: { hash: b64Bytes(hash) },
         imageScaleMode: (f.scaleMode || 'fill').toUpperCase(),
         visible: true,
       };

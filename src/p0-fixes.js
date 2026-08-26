@@ -12,7 +12,7 @@
  *   8. Image crop UI + image-place tool polish
  *   9. Point-in-path hit test for vectors
  *  10. System clipboard interop (copy/paste across windows)
- *  11. Canvas mini-map is in enhancements.js
+ *  11. Canvas mini-map — removed (dark corner overlay, not Figma)
  *  12. Viewport culling (1K/10K/50K/100K performance)
  *  13. Auto-layout edge cases: min/max, aspect ratio, counter-axis gap,
  *      nested hug/fill fixed-point, stroke/effect bounds in measurement

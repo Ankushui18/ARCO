@@ -146,6 +146,9 @@
 
   // ------------------------------------------------------------- paths
   function roundedPath(ctx, x, y, w, h, r) {
+    if (global.RadiusFigma && global.RadiusFigma.path) {
+      if (global.RadiusFigma.path(ctx, x, y, w, h, r, ctx._cornerSmooth || 0)) return;
+    }
     const [tl, tr, br, bl] = r || [0, 0, 0, 0];
     const rr = (v) => Math.max(0, Math.min(v, w / 2, h / 2));
     ctx.beginPath();
@@ -378,6 +381,7 @@
     const w = n.w, h = n.h;
     const lx = n.x, ly = n.y;
     const rot = n.rotation || 0;
+    ctx._cornerSmooth = n.cornerSmooth || 0;
 
     ctx.save();
     ctx.globalAlphaBase = (ctx.globalAlphaBase ?? 1) * (n.opacity == null ? 1 : n.opacity);
@@ -419,16 +423,9 @@
         ctx.globalAlpha = ctx.globalAlphaBase;
       }
       drawPaints(ctx, 0, 0, w, h, n.fills, doc);
-      // Always stroke the frame bounds (Figma). Zoom-independent 1 CSS px.
-      {
-        const z = ctx._zoom || 1;
-        ctx.save();
-        ctx.globalAlpha = (ctx.globalAlphaBase ?? 1) * (n.fills && n.fills.length ? 0.22 : 0.42);
-        ctx.strokeStyle = n.fills && n.fills.length ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.55)';
-        ctx.lineWidth = 1 / z;
-        ctx.strokeRect(0.5 / z, 0.5 / z, Math.max(0, w - 1 / z), Math.max(0, h - 1 / z));
-        ctx.restore();
-      }
+      // Figma frames have no automatic stroke. Only paint n.stroke when the
+      // user turned it on. Empty frames keep a faint plate so they stay visible.
+      if (n.stroke && n.stroke.visible) drawStroke(ctx, 0, 0, w, h, n.radius, n.stroke);
       if (n.grid && n.grid.visible !== false) drawGrid(ctx, 0, 0, w, h, n.grid);
     } else if (n.type === 'rect') {
       drawShadows(ctx, 0, 0, w, h, n.radius, n.shadows);
@@ -691,7 +688,7 @@
 
     // Pixel grid: only drawn when pixelPreview is on AND zoom ≥ 800%.
     // Color chosen to be visible on both dark and light canvas.
-    if (view.pixelPreview !== false && zoom >= 8) {
+    if (view.pixelPreview === true && zoom >= 8) {
       const step = Math.max(1, Math.round(zoom));
       // Pick grid color by perceived brightness of the canvas bg.
       const isDark = canvasColor.length >= 7

@@ -1540,9 +1540,16 @@
 
     // ============================================================ MENUS
     _menu(el) {
-      document.querySelectorAll('.pf-menu').forEach(m => m.remove());
-      if (el) document.body.appendChild(el);
-      const close = () => { el.remove(); document.removeEventListener('pointerdown', close, true); };
+      document.querySelectorAll('.pf-menu').forEach(m => { if (m !== el) m.remove(); });
+      if (el && !el.parentNode) document.body.appendChild(el);
+      const close = (e) => {
+        // Must ignore clicks INSIDE the menu. The old closer ran on every
+        // pointerdown (capture) and removed the menu before button `click`
+        // fired — so Export / View / context actions never ran.
+        if (e && el.contains(e.target)) return;
+        el.remove();
+        document.removeEventListener('pointerdown', close, true);
+      };
       setTimeout(() => document.addEventListener('pointerdown', close, true), 0);
       return el;
     },
