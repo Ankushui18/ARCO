@@ -32,7 +32,17 @@
         weight: t ? t.weight : 400,
         italic: t ? !!t.italic : false,
         lineHeight: t ? t.lineHeight : 1.2,
+        lineHeightUnit: t ? (t.lineHeightUnit || 'auto') : 'auto',
         letterSpacing: t ? t.letterSpacing : 0,
+        underline: t ? !!t.underline : false,
+        strike: t ? !!t.strike : false,
+        textCase: t ? (t.textCase || 'none') : 'none',
+        list: t ? (t.list || 'none') : 'none',
+        listSpacing: t ? (t.listSpacing || 0) : 0,
+        paragraphSpacing: t ? (t.paragraphSpacing || 0) : 0,
+        paragraphIndent: t ? (t.paragraphIndent || 0) : 0,
+        wrapStyle: t ? (t.wrapStyle || 'standard') : 'standard',
+        ot: t && t.ot ? { ...t.ot } : { liga: true, calt: true, kern: true },
       };
       if (n) n.styleId = id;
       return doc.styles.text[id];
@@ -63,6 +73,7 @@
         node.text.italic = st.italic;
         node.text.lineHeight = st.lineHeight;
         node.text.letterSpacing = st.letterSpacing;
+        if (global.TextEngine) global.TextEngine.applyStyleFields(node.text, st);
         node.styleId = styleId;
         n++;
       }

@@ -168,6 +168,7 @@ input, select, textarea { font: inherit; color: inherit; }
 a { color: inherit; }
 .icon { display: inline-block; vertical-align: middle; flex-shrink: 0; }
 ::selection { background: var(--accent-active); }
+.text-edit::selection { background: rgba(13,153,255,.28); color: inherit; }
 
 /* ───────────────────────────── Scrollbar ───────────────────────────── */
 ::-webkit-scrollbar { width: 12px; height: 12px; }
@@ -1235,7 +1236,14 @@ body.pan-ready #ed-canvas { touch-action: pan-x pan-y; }
 .ins-num:focus,.ins-sec input[type="number"]:focus,.ins-sec input[type="text"]:focus { border-color:var(--accent) !important; box-shadow:var(--accent-ring); }
 .fill-row,.sh-row { border-radius:7px; }
 
-.text-edit { border-color:var(--accent) !important; caret-color:var(--accent) !important; background:rgba(124,92,255,.075) !important; box-shadow:0 0 0 1px rgba(124,92,255,.35),0 8px 28px rgba(0,0,0,.25) !important; }
+.text-edit {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: 0 0 0 1px #0d99ff !important;
+  caret-color: currentColor !important;
+  padding: 0 !important;
+}
 .focus-canvas .ed-left,.focus-canvas .ed-right { display:none; }
 .focus-canvas .ed-toolbar { opacity:.3; transition:opacity .18s; }
 .focus-canvas .ed-toolbar:hover { opacity:1; }
@@ -1247,3 +1255,256 @@ body.pan-ready #ed-canvas { touch-action: pan-x pan-y; }
 @media(max-width:1040px){
   .ed-brand>span:last-child,.ed-top-center,#ed-dev{display:none}.ed-right{display:none}.ed-filename-wrap{max-width:170px}
 }
+
+/* Studio v7 — empty inspector + align row */
+.studio-empty-ins { padding: 28px 16px 20px !important; }
+.studio-empty-actions {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  margin: 14px 0 8px; text-align: left;
+}
+.studio-empty-actions .ed-btn {
+  justify-content: flex-start; height: 32px; padding: 0 10px;
+  background: rgba(255,255,255,.04); border: 1px solid var(--hairline);
+  color: var(--txt-mid); font-weight: 500;
+}
+.studio-empty-actions .ed-btn:hover { background: var(--accent-soft); color: #fff; border-color: transparent; }
+.studio-empty-actions .ed-btn b {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px;
+  margin-right: 6px; border-radius: 4px; background: #111318;
+  font: 600 10px/1 ui-monospace, monospace; color: #fff;
+}
+.align-row { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.align-row .al-dir { width: 28px; height: 26px; }
+.align-row .tb-sep-v { width: 1px; height: 16px; background: var(--hairline); margin: 0 4px; }
+
+.pf-flyout {
+  position: fixed; z-index: 80; min-width: 176px;
+  background: var(--chrome); border: 1px solid #111; border-radius: 8px;
+  box-shadow: var(--sh-popover); padding: 4px; display: flex; flex-direction: column;
+}
+.pf-flyout button {
+  display: flex; align-items: center; gap: 8px; height: 30px;
+  padding: 0 10px; border: 0; background: transparent; color: var(--txt-mid);
+  border-radius: 6px; font-size: 12px; text-align: left;
+}
+.pf-flyout button:hover { background: var(--accent); color: #fff; }
+.pf-flyout kbd { margin-left: auto; font: 600 10px ui-monospace, monospace; opacity: .55; }
+.pf-comment-pop {
+  position: absolute; z-index: 40; width: 240px;
+  background: #2c2c2c; border: 1px solid #111; border-radius: 8px;
+  box-shadow: var(--sh-popover); padding: 10px;
+}
+.pf-comment-ta {
+  width: 100%; min-height: 64px; resize: vertical; background: #1a1a1a;
+  border: 1px solid #333; color: #fff; border-radius: 6px; padding: 8px;
+  font: 12.5px/1.45 Inter, sans-serif; outline: none;
+}
+.pf-comment-ta:focus { border-color: #0d99ff; }
+.pf-comment-row { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+
+/* Grouped Figma-style toolbar */
+.ed-toolbar .tool-group {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border-radius: 7px;
+}
+.ed-toolbar .tool-group.active { background: rgba(13,153,255,.16); }
+.ed-toolbar .tool-group .tool { width: 30px; }
+.ed-toolbar .tool-caret {
+  width: 10px; padding: 0; border: 0; background: transparent;
+  color: var(--txt-faint); cursor: pointer; position: relative;
+}
+.ed-toolbar .tool-caret:after {
+  content: ""; position: absolute; left: 1px; top: 50%;
+  border: 3px solid transparent; border-left-color: currentColor;
+  transform: translateY(-50%);
+}
+.ed-toolbar .tool-group:hover .tool-caret,
+.ed-toolbar .tool-group.active .tool-caret { color: #fff; }
+.ed-toolbar .tool-caret:hover { background: rgba(255,255,255,.08); }
+
+#pf-persist-banner {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+  z-index: 90; display: flex; align-items: center; gap: 10px;
+  max-width: min(640px, calc(100vw - 24px));
+  padding: 8px 10px 8px 14px;
+  background: #1e1e1e; color: #eee; border: 1px solid #0d99ff;
+  border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,.4);
+  font-size: 12.5px;
+}
+#pf-persist-banner button {
+  border: 0; border-radius: 6px; height: 26px; padding: 0 10px;
+  background: #0d99ff; color: #fff; font-weight: 600;
+}
+#pf-persist-banner [data-x] { background: transparent; color: #aaa; padding: 0 6px; }
+
+.pf-thread { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.pf-reply { font-size: 11.5px; color: #ddd; }
+.pf-reply b { color: #fff; margin-right: 4px; }
+.pf-reply-ta {
+  width: 100%; min-height: 40px; resize: vertical; background: #1a1a1a;
+  border: 1px solid #333; color: #fff; border-radius: 6px; padding: 6px;
+  font: 12px/1.4 Inter, sans-serif;
+}
+.pf-reply-ok { align-self: flex-end; }
+
+.text-edit {
+  background: transparent !important;
+  box-shadow: 0 0 0 1px #0d99ff !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
+
+/* =============================================================
+   Figma typography panel + type settings + font filters
+   ============================================================= */
+.pf-type .pf-type-row {
+  display: grid; grid-template-columns: 1fr 72px; gap: 6px; margin-bottom: 7px;
+}
+.pf-type .pf-type-row input,
+.pf-type .pf-type-row select {
+  width: 100%; background: #1a1a1a; border: 1px solid #333; color: var(--txt, #eee);
+  border-radius: 6px; padding: 5px 7px; font-size: 11.5px; height: 26px; outline: none;
+}
+.pf-type .pf-type-row input:focus,
+.pf-type .pf-type-row select:focus { border-color: #0d99ff; }
+.pf-align-row .al-dir.dim { opacity: .35; }
+.pf-style-chip {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(13,153,255,.12); color: #d7ecff;
+  border-radius: 6px; padding: 4px 8px; font-size: 11px; margin-bottom: 8px;
+}
+.pf-style-chip .mini { margin-left: auto; }
+
+.pf-font-picker-v2 { width: 280px; max-height: 380px; }
+.pf-font-filters {
+  display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px;
+  border-bottom: 1px solid #1a1a1a;
+}
+.pf-font-filters button {
+  border: 0; background: #1a1a1a; color: #bbb; border-radius: 10px;
+  padding: 2px 8px; font-size: 10.5px; cursor: pointer;
+}
+.pf-font-filters button.on { background: #0d99ff; color: #fff; }
+
+.pf-type-pop, .pf-style-pop, .pf-icon-pop, .pf-link-pop {
+  position: fixed; z-index: 2600; width: 280px;
+  background: #2c2c2c; border: 1px solid #111; border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(0,0,0,.5); padding: 10px; color: #eee;
+  font-size: 12px;
+}
+.pf-type-preview {
+  background: #1e1e1e; border-radius: 6px; padding: 12px 10px;
+  margin-bottom: 8px; overflow: hidden; white-space: nowrap;
+}
+.pf-type-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.pf-type-tabs button {
+  flex: 1; height: 26px; border: 0; background: #1a1a1a; color: #aaa;
+  border-radius: 6px; cursor: pointer;
+}
+.pf-type-tabs button.on { background: #0d99ff; color: #fff; }
+.pf-type-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  color: #888; margin: 10px 0 6px; font-weight: 600;
+}
+.pf-ot-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; font-size: 11.5px;
+}
+.pf-style-pop { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow: auto; }
+.pf-style-pop button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  border: 0; background: transparent; color: #ddd; padding: 6px 8px;
+  border-radius: 6px; text-align: left; cursor: pointer;
+}
+.pf-style-pop button:hover, .pf-style-pop button.on { background: rgba(13,153,255,.18); }
+.pf-style-pop button span { font-size: 10.5px; color: #888; }
+.pf-icon-pop { width: 260px; }
+.pf-icon-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
+  max-height: 240px; overflow: auto; padding-top: 8px;
+}
+.pf-icon-grid button {
+  height: 34px; border: 0; background: #1a1a1a; color: #fff;
+  border-radius: 6px; font-size: 18px; cursor: pointer;
+}
+.pf-icon-grid button:hover { background: #0d99ff; }
+.pf-link-pop { width: 240px; display: flex; flex-direction: column; gap: 6px; }
+.pf-link-pop input {
+  width: 100%; background: #1a1a1a; border: 1px solid #333; color: #fff;
+  border-radius: 6px; padding: 6px 8px; outline: none;
+}
+.pf-link-pop input:focus { border-color: #0d99ff; }
+.pf-link-chip {
+  position: absolute; z-index: 50; max-width: 280px;
+  background: #1e1e1e; color: #8fd0ff; border: 1px solid #0d99ff;
+  border-radius: 6px; padding: 4px 8px; font-size: 11px;
+  pointer-events: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ins-btnrow .al-dir { min-width: 28px; }
+
+/* Scale panel + select-layer submenu */
+.pf-scale-sec .pf-anchor {
+  display: grid; grid-template-columns: repeat(3, 18px); gap: 4px;
+  width: 62px; margin: 4px 0 8px;
+}
+.pf-anchor button {
+  width: 18px; height: 18px; padding: 0; border-radius: 3px;
+  border: 1px solid #444; background: #1a1a1a;
+}
+.pf-anchor button.on { background: #0d99ff; border-color: #0d99ff; }
+.pf-sub { position: relative; }
+.pf-sub-menu {
+  position: absolute; left: 100%; top: 0; min-width: 160px;
+  background: #2c2c2c; border: 1px solid #111; border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0,0,0,.45); padding: 4px; z-index: 5;
+}
+.pf-sub-menu button {
+  display: block; width: 100%; text-align: left; border: 0;
+  background: transparent; color: #ddd; padding: 5px 8px; border-radius: 5px;
+}
+.pf-sub-menu button:hover { background: #0d99ff; color: #fff; }
+.pf-menu .kbd { float: right; opacity: .45; font: 600 10px ui-monospace, monospace; }
+
+/* Create designs: rename modal, eyedropper, selection colors */
+.pf-rename-back {
+  position: fixed; inset: 0; z-index: 2700;
+  background: rgba(0,0,0,.45); display: grid; place-items: center;
+}
+.pf-rename {
+  width: min(420px, calc(100vw - 24px));
+  background: #2c2c2c; color: #eee; border: 1px solid #111;
+  border-radius: 10px; padding: 16px; box-shadow: 0 20px 48px rgba(0,0,0,.5);
+}
+.pf-rename h3 { margin: 0 0 12px; font-size: 14px; }
+.pf-rename h3 span { opacity: .5; font-weight: 500; }
+.pf-rename label { display: block; font-size: 11px; color: #999; margin: 8px 0 4px; }
+.pf-rename input {
+  width: 100%; background: #1a1a1a; border: 1px solid #333; color: #fff;
+  border-radius: 6px; padding: 7px 8px; outline: none;
+}
+.pf-rename input:focus { border-color: #0d99ff; }
+.pf-rn-btns { display: flex; gap: 6px; margin: 8px 0; }
+.pf-rn-btns button {
+  border: 0; background: #1a1a1a; color: #ddd; border-radius: 6px;
+  padding: 4px 8px; font-size: 11px; cursor: pointer;
+}
+.pf-rn-preview { max-height: 140px; overflow: auto; font-size: 11.5px; margin: 8px 0; color: #bbb; }
+.pf-rn-preview s { opacity: .55; }
+.pf-rn-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.pf-rn-foot button { border: 0; border-radius: 6px; height: 28px; padding: 0 12px; background: #3a3a3a; color: #fff; }
+.pf-rn-foot .primary { background: #0d99ff; }
+#pf-eye-chip {
+  position: fixed; z-index: 2800; display: flex; align-items: center; gap: 8px;
+  background: #1e1e1e; border: 1px solid #0d99ff; color: #fff;
+  border-radius: 8px; padding: 4px 8px; font: 600 12px ui-monospace, monospace;
+  pointer-events: none;
+}
+#pf-eye-chip i { width: 16px; height: 16px; border-radius: 3px; border: 1px solid #000; display: block; }
+.pf-selc { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.pf-selc input[type="color"] { width: 22px; height: 22px; padding: 0; border: 0; background: none; }
+.pf-selc span { font-size: 11.5px; color: #ccc; flex: 1; }
+.pf-selc button { border: 0; background: transparent; color: #888; cursor: pointer; }
+.pf-preset-list { display: flex; flex-direction: column; gap: 4px; }
+.pf-preset-list .ed-btn { justify-content: space-between; }
+.pf-preset-list small { opacity: .5; font-weight: 400; }

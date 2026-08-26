@@ -79,6 +79,13 @@
       n.text = Object.assign({
         content: 'Text', font: 'Inter', size: 16, weight: 400, italic: false,
         lineHeight: 1.2, letterSpacing: 0, align: 'left', valign: 'top', token: null,
+        lineHeightUnit: 'auto', textCase: 'none', list: 'none',
+        listSpacing: 0, paragraphSpacing: 0, paragraphIndent: 0,
+        hangingLists: false, hangingQuotes: false, truncate: false, maxLines: 1,
+        wrapStyle: 'standard', underline: false, strike: false,
+        underlineStyle: 'solid', underlineOffset: 0, verticalTrim: false,
+        ot: { liga: true, dlig: false, calt: true, kern: true },
+        links: [],
         // Figma text auto-resize: 'auto' (hug w+h — Figma's default for new
         // text) | 'auto-w' (hug width) | 'auto-h' (hug height) | 'fixed'
         resize: 'auto',
@@ -219,7 +226,7 @@
       c.shadows = n.shadows.map(s => ({ ...s }));
       c.al = n.al ? { ...n.al, gap: { ...n.al.gap }, gapCross: { ...n.al.gapCross }, pad: n.al.pad.map(p => ({ ...p })) } : null;
       c.als = n.als ? { ...n.als } : null;
-      c.text = n.text ? { ...n.text } : null;
+      c.text = n.text ? { ...n.text, links: (n.text.links || []).map(l => ({ ...l })), ot: n.text.ot ? { ...n.text.ot } : undefined, runs: n.text.runs ? n.text.runs.map(r => ({ ...r })) : undefined } : null;
       c.interactions = (n.interactions || []).map(x => ({ ...x }));
       c.grid = n.grid ? { ...n.grid } : null;
       c.constraints = n.constraints ? { ...n.constraints } : { h: 'min', v: 'min' };
@@ -311,7 +318,9 @@
   }
   function snapshot(doc) {
     ensureDocShape(doc);
-    return JSON.stringify({ name: doc.name, pages: doc.pages, vars: doc.vars, components: doc.components, comments: doc.comments, versions: doc.versions, styles: doc.styles, annotations: doc.annotations, libraries: doc.libraries });
+    const raw = JSON.parse(JSON.stringify({ name: doc.name, pages: doc.pages, vars: doc.vars, components: doc.components, comments: doc.comments, versions: doc.versions, styles: doc.styles, annotations: doc.annotations, libraries: doc.libraries }));
+    stripTransient(raw);
+    return JSON.stringify(raw);
   }
   function restore(doc, snap) {
     const d = JSON.parse(snap);
@@ -328,7 +337,12 @@
     // that made ⌘Z/⌘Y throw "this.history.undo is not a function"; caught
     // by the P0 acceptance matrix).
     constructor() { this._u = []; this._r = []; }
-    push(doc) { this._u.push(snapshot(doc)); if (this._u.length > 80) this._u.shift(); this._r = []; }
+    _cap(doc) {
+      let n = 0;
+      try { for (const p of (doc && doc.pages) || []) n += Object.keys(p.nodes || {}).length; } catch (e) {}
+      return n > 800 ? 16 : n > 250 ? 32 : 60;
+    }
+    push(doc) { this._u.push(snapshot(doc)); const cap = this._cap(doc); while (this._u.length > cap) this._u.shift(); this._r = []; }
     undo(doc) { const s = this._u.pop(); if (s == null) return false; this._r.push(snapshot(doc)); restore(doc, s); return true; }
     redo(doc) { const s = this._r.pop(); if (s == null) return false; this._u.push(snapshot(doc)); restore(doc, s); return true; }
     begin(doc) { this._batch = snapshot(doc); this._r = []; }
@@ -353,9 +367,60 @@
   const IDB_NAME = 'penfig-files';
   const IDB_VER = 1;
   const IDB_STORE = 'files';
+  const TRANSIENT_NODE_KEYS = ['_wt', '_wc', '_w', '_l', '_measured', '_cSize', '_rotLabel', '_cloneMap', '_srcTexts', '_pfid'];
+
+  function stripTransient(value) {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) { for (const v of value) stripTransient(v); return; }
+    for (const k of TRANSIENT_NODE_KEYS) delete value[k];
+    for (const k of Object.keys(value)) {
+      const v = value[k];
+      if (v && typeof v === 'object') stripTransient(v);
+    }
+  }
+
+  function cloneForSave(entry) {
+    // JSON round-trip drops functions / Maps / undefined and is what IDB
+    // can always store. Layout caches are stripped first so a 2 000-node
+    // import does not write megabytes of _wt/_wc on every keystroke.
+    const copy = {
+      id: entry.id,
+      name: entry.name,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+      pageCount: entry.pageCount,
+      thumb: entry.thumb && entry.thumb.length < 400000 ? entry.thumb : '',
+      doc: entry.doc,
+    };
+    try {
+      const raw = JSON.parse(JSON.stringify(copy));
+      if (raw.doc) stripTransient(raw.doc);
+      return raw;
+    } catch (e) {
+      const fallback = {
+        id: entry.id, name: entry.name,
+        createdAt: entry.createdAt, updatedAt: entry.updatedAt,
+        pageCount: entry.pageCount || 1, thumb: '',
+        doc: entry.doc,
+      };
+      try { return JSON.parse(JSON.stringify(fallback)); }
+      catch (e2) { return null; }
+    }
+  }
+
+  function persistBlocked() {
+    try {
+      if (typeof window !== 'undefined' && window.origin === 'null') return true;
+      const k = '__pf_idb_probe__';
+      localStorage.setItem(k, '1');
+      localStorage.removeItem(k);
+      return false;
+    } catch (e) { return true; }
+  }
 
   function _openIDB() {
     return new Promise((resolve) => {
+      if (persistBlocked()) return resolve(null);
       const idb = typeof indexedDB !== 'undefined' ? indexedDB : null;
       if (!idb) return resolve(null);
       let req;
@@ -376,33 +441,47 @@
 
   const store = {
     quotaError: false,
-    backend: 'memory', // 'idb' | 'ls' | 'memory' (memory = nothing durable yet)
-    ready: null,       // Promise resolving once the durable backend is loaded
+    backend: 'memory',
+    ready: null,
     _list: [],
     _db: null,
     _flushTimer: 0,
     _flushing: null,
+    _warned: false,
+    _pendingIds: new Set(),
 
     _readLS() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch (e) { return []; } },
     _toastFull(msg) {
+      if (this._warned) { console.warn('penfig: ' + msg); return; }
+      this._warned = true;
       console.warn('penfig: ' + msg);
       const App = typeof globalThis !== 'undefined' ? globalThis.App : null;
-      if (App && typeof App.toast === 'function') App.toast('⚠ ' + msg, 9000);
+      if (App && typeof App.toast === 'function') {
+        App.toast(msg, 10000, [
+          { label: 'Export .fig', fn: () => { try { App.exportBackupFig && App.exportBackupFig(); } catch (e) {} } },
+        ]);
+      }
     },
 
     init(force) {
       if (this.ready && !force) return this.ready;
-      if (force) { try { if (this._db) this._db.close(); } catch (e) { } this._db = null; }
+      if (force) { try { if (this._db) this._db.close(); } catch (e) { } this._db = null; this.ready = null; }
       this.ready = (async () => {
+        if (persistBlocked()) {
+          this.backend = 'memory';
+          this.ephemeral = true;
+          this._warned = true;
+          this._list = [];
+          return this;
+        }
         this._db = await _openIDB();
         if (this._db) {
           this.backend = 'idb';
           const entries = await this._idbGetAll();
           if (entries.length) this._list = entries;
           else {
-            // first run on this browser: adopt anything left in localStorage
             this._list = this._readLS();
-            if (this._list.length) await this._idbPutAll(this._list);
+            for (const e of this._list) await this._idbPutOne(e);
           }
         } else {
           this.backend = 'ls';
@@ -422,29 +501,79 @@
         } catch (e) { resolve([]); }
       });
     },
-    _idbPutAll(list) {
+    _idbPutOne(entry) {
+      return new Promise((resolve) => {
+        const clean = cloneForSave(entry);
+        if (!clean || clean.id == null) return resolve(false);
+        const attempt = (payload) => {
+          try {
+            const tx = this._db.transaction(IDB_STORE, 'readwrite');
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+            tx.onabort = () => resolve(false);
+            tx.objectStore(IDB_STORE).put(payload);
+          } catch (e) { resolve(false); }
+        };
+        attempt(clean);
+      }).then((ok) => {
+        if (ok) return true;
+        // Retry without thumbnail / version history — those are the usual
+        // quota blow-ups after a heavy .fig import.
+        const slim = cloneForSave(entry);
+        if (!slim) return false;
+        slim.thumb = '';
+        if (slim.doc) slim.doc.versions = [];
+        return new Promise((resolve) => {
+          try {
+            const tx = this._db.transaction(IDB_STORE, 'readwrite');
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => resolve(false);
+            tx.onabort = () => resolve(false);
+            tx.objectStore(IDB_STORE).put(slim);
+          } catch (e) { resolve(false); }
+        });
+      });
+    },
+    _idbDelete(id) {
       return new Promise((resolve) => {
         try {
           const tx = this._db.transaction(IDB_STORE, 'readwrite');
-          const os = tx.objectStore(IDB_STORE);
-          os.clear();
-          for (const e of list) if (e && e.id != null) os.put(e);
           tx.oncomplete = () => resolve(true);
           tx.onerror = () => resolve(false);
-          tx.onabort = () => resolve(false);
+          tx.objectStore(IDB_STORE).delete(id);
         } catch (e) { resolve(false); }
       });
     },
     flush() {
       clearTimeout(this._flushTimer);
+      if (this.ephemeral || this.backend === 'memory') return Promise.resolve(true);
       if (this.backend !== 'idb' || !this._db) return Promise.resolve(true);
       if (this._flushing) return this._flushing;
-      this._flushing = this._idbPutAll(this._list).then(ok => {
+      const ids = [...this._pendingIds];
+      this._pendingIds.clear();
+      this._flushing = (async () => {
+        let ok = true;
+        if (!ids.length) {
+          // nothing queued — treat as success (do NOT rewrite the whole library)
+          this._flushing = null;
+          return true;
+        }
+        for (const id of ids) {
+          const entry = this._list.find(f => f.id === id);
+          if (!entry) { await this._idbDelete(id); continue; }
+          const wrote = await this._idbPutOne(entry);
+          if (!wrote) ok = false;
+        }
         this._flushing = null;
-        if (!ok) { this.quotaError = true; this._toastFull('IndexedDB write failed — latest changes may not persist. Export the file (.fig) to be safe.'); }
-        else this.quotaError = false;
+        if (!ok) {
+          this.quotaError = true;
+          this._toastFull('Could not save this file in the browser. Your work is still open — export a .fig backup.');
+        } else {
+          this.quotaError = false;
+          this._warned = false;
+        }
         return ok;
-      });
+      })();
       return this._flushing;
     },
 
@@ -452,34 +581,44 @@
     save(list) {
       this._list = Array.isArray(list) ? list : [];
       if (this.backend === 'idb') {
-        // IndexedDB has no 5 MB wall; flush debounced so rapid edits batch.
-        this.quotaError = false;
+        for (const e of this._list) if (e && e.id != null) this._pendingIds.add(e.id);
         clearTimeout(this._flushTimer);
-        this._flushTimer = setTimeout(() => { this.flush().catch(() => { }); }, 400);
+        this._flushTimer = setTimeout(() => { this.flush().catch(() => { }); }, 500);
         return true;
       }
       try {
-        localStorage.setItem(LS_KEY, JSON.stringify(this._list));
+        const slim = this._list.map(e => cloneForSave(e)).filter(Boolean);
+        localStorage.setItem(LS_KEY, JSON.stringify(slim));
         this.quotaError = false;
         return true;
       } catch (e) {
-        // localStorage full (large files + images + versions can exceed the
-        // ~5 MB per-origin quota). Surface it instead of silently dropping
-        // the save — the document is still in memory; export it to .fig.
         this.quotaError = true;
-        this._toastFull('Local storage is full — latest changes not persisted. Export the file (.fig) and delete old files.');
+        this._toastFull('Browser storage is full. Export a .fig backup and delete old files.');
         return false;
       }
     },
     get(id) { return this._list.find(f => f.id === id) || null; },
     put(entry) {
-      const list = this._list.slice();
-      const i = list.findIndex(f => f.id === entry.id);
-      if (i >= 0) list[i] = entry; else list.push(entry);
-      store.save(list);
+      if (!entry || entry.id == null) return entry;
+      const i = this._list.findIndex(f => f.id === entry.id);
+      if (i >= 0) this._list[i] = entry; else this._list.push(entry);
+      if (this.backend === 'idb') {
+        this._pendingIds.add(entry.id);
+        clearTimeout(this._flushTimer);
+        this._flushTimer = setTimeout(() => { this.flush().catch(() => { }); }, 500);
+        return entry;
+      }
+      store.save(this._list.slice());
       return entry;
     },
-    remove(id) { store.save(this._list.filter(f => f.id !== id)); },
+    remove(id) {
+      this._list = this._list.filter(f => f.id !== id);
+      if (this.backend === 'idb' && this._db) {
+        this._idbDelete(id);
+        return;
+      }
+      store.save(this._list.slice());
+    },
   };
 
   // ------------------------------------------------------------- text auto-resize
@@ -519,6 +658,19 @@
     }
   }
 
+  function wrapDeg180(d) {
+    let x = Number(d);
+    if (!isFinite(x)) return 0;
+    x = x % 360;
+    if (x > 180) x -= 360;
+    if (x <= -180) x += 360;
+    return x;
+  }
+  // Figma Design panel: +CCW toward 180°, −CW toward −180°.
+  // Internal radians stay canvas-clockwise so ctx.rotate() is unchanged.
+  function toFigmaDeg(rad) { return Math.round(wrapDeg180(-(rad || 0) * 180 / Math.PI)); }
+  function fromFigmaDeg(deg) { return -wrapDeg180(deg) * Math.PI / 180; }
+
   // HTML escape utility (used by UI layers; lives here so any module can use it
   // without depending on Dash loading first).
   function esc(s) {
@@ -535,6 +687,7 @@
     History, snapshot, restore, ensureDocShape, store,
     normHex, hexToRgb, rgbToHex, rgbaCss,
     textResizeMode, applyTextResize, textResizeDemote,
+    wrapDeg180, toFigmaDeg, fromFigmaDeg,
     esc,
   };
 })(window);

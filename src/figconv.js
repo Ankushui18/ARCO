@@ -23,7 +23,15 @@
     for (const k of keys) { if (o && o[k] != null) return o[k]; }
     return undefined;
   };
-  const fcolor = (c) => c ? M.rgbToHex(c.r || 0, c.g || 0, c.b || 0) : '#000000';
+  const fcolor = (c) => {
+    if (!c) return '#000000';
+    const r = c.r != null ? c.r : (c.red != null ? c.red : 0);
+    const g = c.g != null ? c.g : (c.green != null ? c.green : 0);
+    const b = c.b != null ? c.b : (c.blue != null ? c.blue : 0);
+    // Figma stores 0–1 floats. If a channel is > 1 it is already 0–255.
+    const to01 = (v) => (v > 1 ? v / 255 : v);
+    return M.rgbToHex(to01(r), to01(g), to01(b));
+  };
 
   // ================================================================ IMPORT
   function importFig(bytes, onProgress) {
@@ -150,8 +158,136 @@
         }
       }
     }
+    expandEmptyInstances(doc);
     doc.meta = parsed.meta;
     return { doc, report };
+  }
+
+  // After the tree is built, Figma INSTANCE nodes that shipped without a
+  // cloned subtree (common in newer files) stay visually empty. Clone the
+  // bound component's children so the canvas actually shows something.
+  function expandEmptyInstances(doc) {
+    for (const page of doc.pages) {
+      for (const id of Object.keys(page.nodes)) {
+        const n = page.nodes[id];
+        if (!n || n.type !== 'instance' || !n.componentId) continue;
+        if (n.children && n.children.length) continue;
+        let src = null, srcPage = null;
+        for (const p of doc.pages) {
+          const t = p.nodes[n.componentId];
+          if (t) { src = t; srcPage = p; break; }
+        }
+        if (!src) continue;
+        n.w = n.w || src.w; n.h = n.h || src.h;
+        if ((!n.fills || !n.fills.length) && src.fills && src.fills.length) {
+          n.fills = src.fills.map(f => Object.assign({}, f, { stops: f.stops ? f.stops.map(s => Object.assign({}, s)) : undefined }));
+        }
+        for (const cid of src.children || []) {
+          const k = srcPage.nodes[cid];
+          if (!k) continue;
+          const c = M.deepClone(srcPage, k, true, page);
+          M.attach(doc, page, n.id, c);
+        }
+      }
+    }
+  }
+
+  function readFigSize(fn) {
+    const s = fn.size || {};
+    let w = s.x != null ? s.x : (fn.width != null ? fn.width : null);
+    let h = s.y != null ? s.y : (fn.height != null ? fn.height : null);
+    if ((w == null || !(w > 0)) && fn.vectorData && fn.vectorData.normalizedSize) {
+      w = fn.vectorData.normalizedSize.x;
+      h = fn.vectorData.normalizedSize.y;
+    }
+    if ((w == null || !(w > 0)) && fn.textData && fn.textData.layoutSize) {
+      w = fn.textData.layoutSize.x;
+      h = fn.textData.layoutSize.y;
+    }
+    return {
+      w: (w != null && w > 0) ? w : 1,
+      h: (h != null && h > 0) ? h : 1,
+    };
+  }
+
+  // Convert Figma's 2×3 matrix (maps local origin = top-left) into Penfig's
+  // parent-local x/y + center-pivot rotation. Identity matrices stay a
+  // simple translation so we never disturb unrotated UI files.
+  function applyFigTransform(n, tr) {
+    if (!tr) { n.x = 0; n.y = 0; return; }
+    let a = tr.m00 != null ? tr.m00 : 1;
+    let b = tr.m01 != null ? tr.m01 : 0;
+    let e = tr.m02 != null ? tr.m02 : 0;
+    let c = tr.m10 != null ? tr.m10 : 0;
+    let d = tr.m11 != null ? tr.m11 : 1;
+    let f = tr.m12 != null ? tr.m12 : 0;
+    const sx = Math.hypot(a, c) || 1;
+    const sy = Math.hypot(b, d) || 1;
+    if (Math.abs(sx - 1) > 1e-3) { n.w = Math.max(0.01, (n.w || 1) * sx); a /= sx; c /= sx; }
+    if (Math.abs(sy - 1) > 1e-3) { n.h = Math.max(0.01, (n.h || 1) * sy); b /= sy; d /= sy; }
+    const det = a * d - b * c;
+    if (det < -1e-6) { n.flipH = true; a = -a; c = -c; }
+    const rot = Math.atan2(c, a);
+    if (Math.abs(rot) > 1e-4) {
+      n.rotation = rot;
+      const cx = (n.w || 0) / 2, cy = (n.h || 0) / 2;
+      const cos = Math.cos(rot), sin = Math.sin(rot);
+      n.x = e + cx - (cos * cx - sin * cy);
+      n.y = f + cy - (sin * cx + cos * cy);
+    } else {
+      n.x = e;
+      n.y = f;
+    }
+  }
+
+  function paintTypeOf(p) {
+    const t = p && p.type;
+    if (t == null) return '';
+    if (typeof t === 'number') {
+      return ({ 0: 'SOLID', 1: 'GRADIENT_LINEAR', 2: 'GRADIENT_RADIAL', 3: 'GRADIENT_ANGULAR', 4: 'GRADIENT_DIAMOND', 5: 'IMAGE', 6: 'EMOJI' })[t] || '';
+    }
+    return String(t).toUpperCase();
+  }
+
+  function readFigFills(fn, images, report) {
+    const paints = fn.fillPaints || fn.fills || [];
+    const fills = paints
+      .filter(p => p && p.visible !== false)
+      .map(p => mapPaint(p, images, report))
+      .filter(Boolean);
+    if (fills.length) return fills;
+    // Older Figma frames store a single backgroundColor instead of fillPaints.
+    const isContainer = fn.type === 'FRAME' || fn.type === 'SECTION' || fn.type === 'COMPONENT' || fn.type === 'SYMBOL' || fn.type === 'INSTANCE' || fn.type === 'COMPONENT_SET';
+    if (isContainer && fn.backgroundEnabled !== false && fn.backgroundColor) {
+      const a = fn.backgroundOpacity != null ? fn.backgroundOpacity
+        : (fn.backgroundColor.a != null ? fn.backgroundColor.a : 1);
+      if (a > 0.001) {
+        return [{ type: 'solid', color: fcolor(fn.backgroundColor), opacity: a, token: null }];
+      }
+    }
+    return [];
+  }
+
+  function readFigStroke(fn, images, report) {
+    const paints = fn.strokePaints || fn.strokes || [];
+    const sp = paints.find(p => p && p.visible !== false) || paints[0];
+    let weight = fn.strokeWeight;
+    if (weight == null && fn.strokeWeight == null && sp) weight = 1;
+    if (!sp || !(weight > 0)) return null;
+    const c = mapPaint(sp, images, report) || {};
+    const cap = String(fn.strokeCap || 'NONE').toUpperCase();
+    const join = String(fn.strokeJoin || 'MITER').toUpperCase();
+    return {
+      color: c.color || '#000000',
+      opacity: sp.opacity == null ? 1 : sp.opacity,
+      width: weight,
+      align: String(fn.strokeAlign || 'CENTER').toLowerCase(),
+      token: null,
+      visible: true,
+      cap: cap === 'ROUND' ? 'round' : cap === 'SQUARE' ? 'square' : 'butt',
+      join: join === 'ROUND' ? 'round' : join === 'BEVEL' ? 'bevel' : 'miter',
+      dash: (fn.dashPattern && fn.dashPattern.length) ? fn.dashPattern.slice() : null,
+    };
   }
 
   function kiwiValueToJs(val, type) {
@@ -183,14 +319,17 @@
     let type;
     let probedGeo = null; // for unknown types: decoded geometry, if any
     switch (fn.type) {
-      case 'FRAME': case 'SECTION': case 'ROUNDED_RECTANGLE': case 'SLIDE': case 'GROUP': type = 'frame'; break;
+      case 'FRAME': case 'SECTION': case 'SLIDE': case 'GROUP':
+      case 'COMPONENT_SET': case 'BOOLEAN_OPERATION': type = 'frame'; break;
+      case 'ROUNDED_RECTANGLE': type = 'rect'; break;
       case 'SYMBOL': case 'COMPONENT': type = 'frame'; break; // SYMBOL = component master in this schema era
       case 'INSTANCE': type = 'instance'; break;
       case 'RECTANGLE': type = 'rect'; break;
       case 'ELLIPSE': type = 'ellipse'; break;
       case 'LINE': type = 'line'; break;
       case 'TEXT': type = 'text'; break;
-      case 'VECTOR': case 'STAR': case 'POLYGON': case 'ARC': type = 'vector'; break;
+      case 'VECTOR': case 'STAR': case 'POLYGON': case 'ARC':
+      case 'REGULAR_POLYGON': case 'STAR_SHAPE': type = 'vector'; break;
       case 'VARIABLE': case 'VARIABLE_SET': return null;
       default:
         // Unknown node type: if it carries decodable geometry import it as a
@@ -221,17 +360,11 @@
     };
     if (fn.resizeToFit) n.resizeToFit = true;
 
-    // fills
-    n.fills = (fn.fillPaints || []).filter(p => p.visible !== false && p.type).map(p => mapPaint(p, images, report));
-    // stroke
-    const sp = (fn.strokePaints || [])[0];
-    if (sp && fn.strokeWeight > 0) {
-      const c = mapPaint(sp, images, report);
-      n.stroke = {
-        color: c.color || '#000000', opacity: sp.opacity == null ? 1 : sp.opacity,
-        width: fn.strokeWeight, align: (fn.strokeAlign || 'INSIDE').toLowerCase(), token: null, visible: true,
-      };
-    }
+    // fills — fillPaints first, then the older frame backgroundColor fallback
+    n.fills = readFigFills(fn, images, report);
+    // stroke — kiwi omits default strokeWeight (1), so treat missing as 1 when a paint exists
+    const stroke = readFigStroke(fn, images, report);
+    if (stroke) n.stroke = stroke;
     // radius
     const radii = [
       g(fn, 'rectangleTopLeftCornerRadius', 'rectangleCornerRadii'),
@@ -339,6 +472,18 @@
       // .fig enum has no WIDTH-only mode, so Figma's "auto width" text
       // imports as 'fixed' (documented deviation).
       n.text.resize = autoResize === 'WIDTH_AND_HEIGHT' ? 'auto' : autoResize === 'HEIGHT' ? 'auto-h' : 'fixed';
+      const deco = (fn.textDecoration || '').toString().toLowerCase();
+      n.text.underline = deco.includes('underline') || !!fn.underline;
+      n.text.strike = deco.includes('strikethrough') || deco.includes('strike') || !!fn.strikethrough;
+      const tc = (fn.textCase || fn.textTransform || 'ORIGINAL').toString().toUpperCase();
+      n.text.textCase = tc === 'UPPER' ? 'upper' : tc === 'LOWER' ? 'lower' : tc === 'TITLE' || tc === 'SMALL_CAPS' ? (tc === 'SMALL_CAPS' ? 'small-caps' : 'title') : 'none';
+      const ls = fn.listStyle || fn.textListOptions || null;
+      n.text.list = (ls === 'UNORDERED' || ls === 'BULLET' || (ls && ls.type === 'UNORDERED')) ? 'bullet'
+        : (ls === 'ORDERED' || ls === 'NUMBERED' || (ls && ls.type === 'ORDERED')) ? 'number' : 'none';
+      n.text.paragraphSpacing = (fn.paragraphSpacing && (fn.paragraphSpacing.value != null ? fn.paragraphSpacing.value : fn.paragraphSpacing)) || 0;
+      n.text.paragraphIndent = (fn.paragraphIndent && (fn.paragraphIndent.value != null ? fn.paragraphIndent.value : fn.paragraphIndent)) || 0;
+      n.text.truncate = !!(fn.textTruncation || fn.truncate);
+      n.text.maxLines = fn.maxLines || 1;
       if (n.als) {
         if (autoResize === 'WIDTH_AND_HEIGHT') { n.als.w = 'hug'; n.als.h = 'hug'; }
         else if (autoResize === 'HEIGHT') { n.als.h = 'hug'; n.als.w = 'fixed'; }
@@ -348,7 +493,9 @@
       if (tf && tf.type === 'solid') n.fills[0] = tf;
     }
 
-    if (fn.type === 'GROUP') n.clips = false;
+    if (fn.type === 'GROUP' || fn.type === 'BOOLEAN_OPERATION' || fn.type === 'COMPONENT_SET') n.clips = false;
+    if (fn.frameMaskDisabled) n.clips = false;
+    if (fn.type === 'SECTION') n.section = true;
     if (fn.type === 'COMPONENT' || fn.type === 'SYMBOL') {
       n.isComponent = true;
       M.ensureDocShape(doc);
@@ -426,25 +573,56 @@
     if (s.includes('thin')) return 100;
     return 400;
   }
+  function lookupImage(images, hash) {
+    if (!hash || !images) return null;
+    if (images.has(hash)) return images.get(hash);
+    const lower = String(hash).toLowerCase();
+    if (images.has(lower)) return images.get(lower);
+    return null;
+  }
+  function paintHash(p) {
+    const h = p && p.image && p.image.hash;
+    if (!h) return null;
+    if (typeof h === 'string') return h;
+    if (h instanceof Uint8Array || ArrayBuffer.isView(h)) return u8ToHex(h);
+    if (Array.isArray(h)) return u8ToHex(h);
+    if (h.bytes) return u8ToHex(h.bytes);
+    return null;
+  }
   function mapPaint(p, images, report) {
-    if (p.type === 'SOLID') {
+    const kind = paintTypeOf(p);
+    if (kind === 'SOLID') {
       return { type: 'solid', color: fcolor(p.color), opacity: p.opacity == null ? 1 : p.opacity, token: null };
     }
-    if (p.type === 'IMAGE') {
-      const hash = p.image && p.image.hash ? u8ToHex(p.image.hash) : null;
-      const im = hash && images.get(hash);
+    if (kind === 'IMAGE') {
+      const hash = paintHash(p);
+      const im = lookupImage(images, hash);
       if (!im && hash) report.warnings.push('image hash ' + hash + ' not found in archive');
-      return { type: 'image', src: im ? im.dataURL : null, scaleMode: (p.imageScaleMode || 'FILL').toLowerCase(), opacity: p.opacity == null ? 1 : p.opacity, hash, token: null };
+      return { type: 'image', src: im ? im.dataURL : null, scaleMode: String(p.imageScaleMode || 'FILL').toLowerCase(), opacity: p.opacity == null ? 1 : p.opacity, hash, token: null };
     }
-    if (p.type === 'GRADIENT_LINEAR' || p.type === 'GRADIENT_RADIAL') {
-      const stops = (p.stops || []).map(s => ({ color: fcolor(s.color), opacity: s.color ? s.color.a : 1, pos: s.position ?? 0, token: null }));
-      return { type: p.type === 'GRADIENT_LINEAR' ? 'linear' : 'linear', from: { x: 0, y: 0 }, to: { x: 1, y: 0 }, stops: stops.length ? stops : [{ color: '#ffffff', opacity: 1, pos: 0 }], opacity: p.opacity == null ? 1 : p.opacity, token: null };
+    if (kind === 'GRADIENT_LINEAR' || kind === 'GRADIENT_RADIAL' || kind === 'GRADIENT_ANGULAR' || kind === 'GRADIENT_DIAMOND') {
+      const stops = (p.stops || p.gradientStops || []).map(s => ({
+        color: fcolor(s.color),
+        opacity: s.color && s.color.a != null ? s.color.a : 1,
+        pos: s.position != null ? s.position : (s.pos != null ? s.pos : 0),
+        token: null,
+      }));
+      return {
+        type: kind === 'GRADIENT_RADIAL' ? 'radial' : 'linear',
+        from: { x: 0, y: 0 }, to: { x: 1, y: kind === 'GRADIENT_LINEAR' ? 0 : 1 },
+        stops: stops.length ? stops : [{ color: '#ffffff', opacity: 1, pos: 0 }, { color: '#000000', opacity: 1, pos: 1 }],
+        opacity: p.opacity == null ? 1 : p.opacity, token: null,
+      };
+    }
+    if (p && p.color) {
+      return { type: 'solid', color: fcolor(p.color), opacity: p.opacity == null ? 1 : p.opacity, token: null };
     }
     return { type: 'solid', color: '#cccccc', opacity: 1, token: null };
   }
   function u8ToHex(u8) {
     if (!u8) return '';
-    return Array.from(u8.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const arr = u8 instanceof Uint8Array ? u8 : Uint8Array.from(u8);
+    return Array.from(arr.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
   // Decode a node's vector geometry from its blob references into an SVG `d`
@@ -457,7 +635,8 @@
     const blobAt = (idx) => { const b = blobs[idx]; return b && b.bytes ? b.bytes : null; };
     let d = null;
     let windingRule = 'nonzero';
-    for (const geo of fn.fillGeometry || []) {
+    const geos = [].concat(fn.fillGeometry || [], fn.strokeGeometry || []);
+    for (const geo of geos) {
       const bytes = geo.commandsBlob != null ? blobAt(geo.commandsBlob) : null;
       if (!bytes) continue;
       const part = F.commandsBlobToPath(bytes);
@@ -714,6 +893,13 @@
       // so 'auto-w' exports as NONE (documented deviation)
       const tr = (n.text && n.text.resize) || (n.als ? ((n.als.w === 'hug' && n.als.h === 'hug') ? 'auto' : n.als.h === 'hug' ? 'auto-h' : 'fixed') : 'fixed');
       out.textAutoResize = tr === 'auto' ? 'WIDTH_AND_HEIGHT' : tr === 'auto-h' ? 'HEIGHT' : 'NONE';
+      if (n.text.underline) out.textDecoration = 'UNDERLINE';
+      if (n.text.strike) out.textDecoration = (out.textDecoration ? out.textDecoration + '+' : '') + 'STRIKETHROUGH';
+      if (n.text.textCase && n.text.textCase !== 'none') out.textCase = n.text.textCase === 'upper' ? 'UPPER' : n.text.textCase === 'lower' ? 'LOWER' : n.text.textCase === 'small-caps' ? 'SMALL_CAPS' : 'TITLE';
+      if (n.text.list === 'bullet') out.listStyle = 'UNORDERED';
+      if (n.text.list === 'number') out.listStyle = 'ORDERED';
+      if (n.text.paragraphSpacing) out.paragraphSpacing = n.text.paragraphSpacing;
+      if (n.text.paragraphIndent) out.paragraphIndent = n.text.paragraphIndent;
     }
     return out;
   }

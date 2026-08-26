@@ -54,14 +54,20 @@
       </div>`;
       el.querySelectorAll('.ly-row').forEach(row => {
         const id = row.dataset.id;
+        row.addEventListener('mouseenter', () => {
+          if (App.hoverId !== id) { App.hoverId = id; App._redrawLight && App._redrawLight(); }
+        });
+        row.addEventListener('mouseleave', () => {
+          if (App.hoverId === id) { App.hoverId = null; App._redrawLight && App._redrawLight(); }
+        });
         row.addEventListener('click', (e) => {
           if (e.target.closest('button') || e.target.closest('[data-caret]')) return;
-          const n = page.nodes[id];
-          if (e.shiftKey) {
-            const i = App.sel.indexOf(id);
-            if (i >= 0) App.sel.splice(i, 1); else App.sel.push(id);
-          } else App.sel = [id];
-          P.refreshLayers(); P.refreshInspector(); App.markDirty();
+          if (e.shiftKey || e.metaKey || e.ctrlKey) {
+            const next = App.sel.slice();
+            const i = next.indexOf(id);
+            if (i >= 0) next.splice(i, 1); else next.push(id);
+            App.setSel(next);
+          } else App.setSel([id]);
         });
       });
       el.querySelectorAll('[data-rename]').forEach(sp => sp.addEventListener('dblclick', () => {
@@ -153,16 +159,35 @@
           return;
         }
         el.innerHTML = `
-          <div class="ph big">
+          <div class="ph big studio-empty-ins">
             <div class="ph-icon">${Ico('move',{size:24})}</div>
             <h3>Nothing selected</h3>
-            <p>Pick a tool on the left, or click a layer.</p>
+            <p>Click a layer, or start drawing on the canvas.</p>
+            <div class="studio-empty-actions">
+              <button class="ed-btn" data-empty="frame"><b>F</b> New frame</button>
+              <button class="ed-btn" data-empty="rect"><b>R</b> Rectangle</button>
+              <button class="ed-btn" data-empty="text"><b>T</b> Text</button>
+              <button class="ed-btn" data-empty="import">Import .fig</button>
+            </div>
             <p class="keys">
-              <span><b>V</b> Move</span><span><b>F</b> Frame</span><span><b>R</b> Rect</span><span><b>O</b> Ellipse</span>
-              <span><b>T</b> Text</span><span><b>P</b> Pen</span><span><b>N</b> Pencil</span><span><b>A</b> Arrow</span>
-              <span><b>H</b> Hand</span><span><b>⌘/</b> Commands</span><span><b>⌘E</b> Export</span><span><b>?</b> Shortcuts</span>
+              <span><b>V</b> Move</span><span><b>⇧1</b> Zoom to fit</span>
+              <span><b>Space</b> Pan</span><span><b>⌘/</b> Commands</span>
+              <span><b>?</b> Shortcuts</span><span><b>⇧F</b> Focus canvas</span>
             </p>
           </div>`;
+        el.querySelectorAll('[data-empty]').forEach(b => b.addEventListener('click', () => {
+          const act = b.dataset.empty;
+          if (act === 'import') {
+            const inp = document.createElement('input');
+            inp.type = 'file'; inp.accept = '.fig,.pfg';
+            inp.onchange = () => {
+              const f = inp.files && inp.files[0];
+              if (!f) return;
+              f.arrayBuffer().then(buf => App.openFromBytesAsync(buf, f.name, /\.pfg$/i.test(f.name) ? 'pfg' : 'fig'));
+            };
+            inp.click();
+          } else App.setTool(act);
+        }));
         return;
       }
       const n = nodes[0];
@@ -173,6 +198,25 @@
 
       // ---- path / node editor (spec §6) — shown while the Pen tool is in edit mode
       if (App.pen && App.pen.kind === 'edit' && App.pen.node) parts.push(this.penSection());
+
+      if (multi) {
+        parts.push(`
+        <section class="ins-sec">
+          <div class="ins-head"><span>Align &amp; distribute</span><span class="ins-val">${nodes.length} selected</span></div>
+          <div class="align-row">
+            <button class="al-dir" data-align="left" title="Align left">${Ico('align_l',{size:13})}</button>
+            <button class="al-dir" data-align="hcenter" title="Align horizontal centers">${Ico('align_hc',{size:13})}</button>
+            <button class="al-dir" data-align="right" title="Align right">${Ico('align_r',{size:13})}</button>
+            <span class="tb-sep-v"></span>
+            <button class="al-dir" data-align="top" title="Align top">${Ico('align_t',{size:13})}</button>
+            <button class="al-dir" data-align="vcenter" title="Align vertical centers">${Ico('align_vc',{size:13})}</button>
+            <button class="al-dir" data-align="bottom" title="Align bottom">${Ico('align_b',{size:13})}</button>
+            ${nodes.length >= 3 ? `<span class="tb-sep-v"></span>
+            <button class="al-dir" data-dist="h" title="Distribute horizontally">${Ico('dist_h',{size:13})}</button>
+            <button class="al-dir" data-dist="v" title="Distribute vertically">${Ico('dist_v',{size:13})}</button>` : ''}
+          </div>
+        </section>`);
+      }
 
       // ---- position & size
       parts.push(`
@@ -185,7 +229,7 @@
             <div class="ins-grid g4" style="grid-template-columns:1fr auto;">
               <label class="ins-lbl" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">
                 <span style="flex:0 0 auto;">Rotation</span>
-                <input type="number" class="ins-num" data-act="rot-deg" step="1" value="${Math.round((n.rotation||0)*180/Math.PI)}">
+                <input type="number" class="ins-num" data-act="rot-deg" step="1" min="-180" max="180" value="${M.toFigmaDeg ? M.toFigmaDeg(n.rotation) : Math.round((n.rotation||0)*180/Math.PI)}">
                 <span style="opacity:.6;font-size:11px;">°</span>
                 <span style="flex:1"></span>
                 <button class="ed-btn sm" data-act="flip-h" title="Flip horizontal (⇧H)">${Ico('flip-h',{size:14})}</button>
@@ -1106,8 +1150,9 @@
       // rotation (degrees)
       const rotInp = el.querySelector('[data-act="rot-deg"]');
       if (rotInp) rotInp.addEventListener('change', () => {
-        const deg = parseFloat(rotInp.value) || 0;
-        commit(() => { n.rotation = deg * Math.PI / 180; });
+        const deg = M.wrapDeg180 ? M.wrapDeg180(parseFloat(rotInp.value) || 0) : (parseFloat(rotInp.value) || 0);
+        rotInp.value = String(deg);
+        commit(() => { n.rotation = M.fromFigmaDeg ? M.fromFigmaDeg(deg) : (-deg * Math.PI / 180); });
       });
       // flip buttons
       el.querySelectorAll('[data-act="flip-h"]').forEach(b => b.addEventListener('click', () => commit(() => { n.flipH = !n.flipH; P.refreshInspector(); })));
@@ -1309,6 +1354,14 @@
       const z3 = el.querySelector('[data-act="z-back"]'); if (z3) z3.addEventListener('click', () => z(x => M.reorderTo(page, x, 'back')));
       const dd = el.querySelector('[data-act="dup"]'); if (dd) dd.addEventListener('click', () => App.duplicateSel());
       const dd2 = el.querySelector('[data-act="del"]'); if (dd2) dd2.addEventListener('click', () => App.deleteSel());
+      el.querySelectorAll('[data-align]').forEach(b => b.addEventListener('click', () => {
+        if (!global.Arrange) return;
+        commit(() => global.Arrange.align(page, nodes.map(x => x.id), b.dataset.align));
+      }));
+      el.querySelectorAll('[data-dist]').forEach(b => b.addEventListener('click', () => {
+        if (!global.Arrange) return;
+        commit(() => global.Arrange.distribute(page, nodes.map(x => x.id), b.dataset.dist));
+      }));
     },
 
     // ============================================================ TOKENS PANEL

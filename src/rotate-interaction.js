@@ -103,10 +103,10 @@
       if (d.dist <= EDGE_R) return { kind:'resize-edge', name };
     }
 
-    // 3) Outside band: 6px inside to 40px outside → rotate.
-    // Compute minimum signed distance across edges; if min is > -6
-    // and the pointer is within 40px of at least one edge → rotate zone.
-    const OUTER = 40, INNER_PAD = 6;
+    // 3) Outside band — Figma is a thin halo just outside the bounds
+    // (help: "hover just outside one of the layer's bounds"). 40px was
+    // swallowing Shift-clicks on a neighbouring section.
+    const OUTER = 16, INNER_PAD = 2;
     let minSigned = Infinity;
     let nearestEdge = 0;
     let nearestEdgeSigned = 0;
@@ -135,7 +135,7 @@
     const [na,nb] = edges[bestEdge].slice(1);
     const sNear = outwardSigned(mx,my,na,nb,center);
 
-    if (bestD <= OUTER && sNear > -INNER_PAD && sNear > -4) {
+    if (bestD <= OUTER && sNear > -INNER_PAD && sNear >= 0) {
       // Pick rotate direction. 0=top(↑),1=top-right(↗),2=right(→)...
       // For OBB corners, direction follows the corner bisector (45°).
       // Determine if near a corner by bestT.
@@ -191,6 +191,12 @@
       const rect = this.canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left, my = e.clientY - rect.top;
       const c = classify(this, mx, my);
+      // Never steal a click that is on another object — Figma selects it
+      // (or Shift-adds it). Rotate only happens on empty canvas.
+      if (c.kind === 'rotate') {
+        const under = this.hitTest(this.toWorld(e));
+        if (under && !this.sel.includes(under.id)) return _handleAt(e);
+      }
       if (c.kind === 'resize-corner') {
         // For multi-select, don't return a corner handle (we don't resize
         // the union AABB in multi-select mode — multi-resize is handled
@@ -269,6 +275,8 @@
     const _onDown = App.onDown.bind(App);
     App.onDown = function(e) {
       if (e.button !== 0 || this.tool !== 'move') return _onDown(e);
+      const under = this.hitTest(this.toWorld(e));
+      if (under && !this.sel.includes(under.id)) return _onDown(e);
       const h = this.handleAt(e);
       if (h && (h.kind === 'rotate' || h.kind === 'rotate-multi')) {
         this.history.begin(this.doc);

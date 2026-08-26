@@ -44,9 +44,18 @@
     },
     add(doc, pageId, x, y, text, author) {
       M.ensureDocShape(doc);
-      const c = { id: M.uid('cm-'), pageId, x, y, text, author: author || 'You', at: Date.now(), resolved: false };
+      const c = { id: M.uid('cm-'), pageId, x, y, text, author: author || 'You', at: Date.now(), resolved: false, replies: [] };
       doc.comments.push(c);
       return c;
+    },
+    reply(doc, id, text, author) {
+      M.ensureDocShape(doc);
+      const c = doc.comments.find(x => x.id === id);
+      if (!c) return null;
+      c.replies = c.replies || [];
+      const r = { id: M.uid('cr-'), text, author: author || 'You', at: Date.now() };
+      c.replies.push(r);
+      return r;
     },
     resolve(doc, id, val) {
       const c = doc.comments.find(x => x.id === id);

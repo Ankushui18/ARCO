@@ -108,6 +108,7 @@
     return (r === 'auto' || r === 'auto-w') ? 0 : n.w;
   }
   function measureText(n, boxW) {
+    if (global.TextEngine && global.TextEngine.measure) return global.TextEngine.measure(n, boxW);
     const t = n.text || {};
     const ctx = textCtx();
     ctx.font = fontSpec(n);
@@ -122,6 +123,7 @@
   }
   function setTextCtx(c) { _ctx = c; }
   function textLines(n, boxW) {
+    if (global.TextEngine && global.TextEngine.textLines) return global.TextEngine.textLines(n, boxW);
     const t = n.text || {};
     const ctx = textCtx();
     ctx.font = fontSpec(n);
@@ -408,10 +410,25 @@
         ctx.strokeStyle = '#d5d5da';
         ctx.lineWidth = 1;
         ctx.strokeRect(0.5, 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
-      } else {
-        if (!n.fills.length) { ctx.globalAlpha = (ctx.globalAlphaBase ?? 1); ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(0, 0, w, h); ctx.globalAlpha = ctx.globalAlphaBase; }
+      } else if (!n.fills.length) {
+        // Figma still paints a faint plate + 1px outline so empty frames
+        // are never "the file looks blank".
+        ctx.globalAlpha = (ctx.globalAlphaBase ?? 1);
+        ctx.fillStyle = 'rgba(255,255,255,0.045)';
+        ctx.fillRect(0, 0, w, h);
+        ctx.globalAlpha = ctx.globalAlphaBase;
       }
       drawPaints(ctx, 0, 0, w, h, n.fills, doc);
+      // Always stroke the frame bounds (Figma). Zoom-independent 1 CSS px.
+      {
+        const z = ctx._zoom || 1;
+        ctx.save();
+        ctx.globalAlpha = (ctx.globalAlphaBase ?? 1) * (n.fills && n.fills.length ? 0.22 : 0.42);
+        ctx.strokeStyle = n.fills && n.fills.length ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = 1 / z;
+        ctx.strokeRect(0.5 / z, 0.5 / z, Math.max(0, w - 1 / z), Math.max(0, h - 1 / z));
+        ctx.restore();
+      }
       if (n.grid && n.grid.visible !== false) drawGrid(ctx, 0, 0, w, h, n.grid);
     } else if (n.type === 'rect') {
       drawShadows(ctx, 0, 0, w, h, n.radius, n.shadows);
@@ -422,8 +439,23 @@
       drawStroke(ctx, 0, 0, w, h, n.radius, n.stroke);
     } else if (n.type === 'ellipse') {
       drawShadows(ctx, 0, 0, w, h, null, n.shadows);
+      const sweep = n.arcSweep == null ? 360 : n.arcSweep;
+      const start = ((n.arcStart || 0) * Math.PI) / 180;
+      const end = start + (sweep * Math.PI) / 180;
+      const inner = Math.max(0, Math.min(0.95, n.innerRadius || 0));
+      const ccw = sweep < 0;
       ctx.beginPath();
-      ctx.ellipse(w/2, h/2, w/2, h/2, 0, 0, Math.PI * 2);
+      if (inner > 0.001) {
+        ctx.ellipse(w/2, h/2, w/2, h/2, 0, start, end, ccw);
+        ctx.ellipse(w/2, h/2, w/2 * inner, h/2 * inner, 0, end, start, !ccw);
+        ctx.closePath();
+      } else if (Math.abs(sweep) < 359.5) {
+        ctx.moveTo(w/2, h/2);
+        ctx.ellipse(w/2, h/2, w/2, h/2, 0, start, end, ccw);
+        ctx.closePath();
+      } else {
+        ctx.ellipse(w/2, h/2, w/2, h/2, 0, 0, Math.PI * 2);
+      }
       ctx.save(); ctx.clip();
       drawPaints(ctx, 0, 0, w, h, n.fills, doc);
       ctx.restore();
@@ -434,8 +466,17 @@
         ctx.strokeStyle = M.rgbaCss(color, 1);
         ctx.lineWidth = n.stroke.width || 0;
         applyStrokeStyle(ctx, n.stroke);
+        const rx = Math.max(0.5, w/2 - (n.stroke.width || 0)/2);
+        const ry = Math.max(0.5, h/2 - (n.stroke.width || 0)/2);
         ctx.beginPath();
-        ctx.ellipse(w/2, h/2, Math.max(0.5, w/2 - (n.stroke.width || 0)/2), Math.max(0.5, h/2 - (n.stroke.width || 0)/2), 0, 0, Math.PI * 2);
+        if (inner > 0.001) {
+          ctx.ellipse(w/2, h/2, rx, ry, 0, start, end, ccw);
+          ctx.ellipse(w/2, h/2, rx * inner, ry * inner, 0, end, start, !ccw);
+        } else if (Math.abs(sweep) < 359.5) {
+          ctx.ellipse(w/2, h/2, rx, ry, 0, start, end, ccw);
+        } else {
+          ctx.ellipse(w/2, h/2, rx, ry, 0, 0, Math.PI * 2);
+        }
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.restore();
@@ -459,6 +500,16 @@
         ctx.lineTo(w - len * Math.cos(a), h/2 - len * Math.sin(a));
         ctx.moveTo(w, h/2);
         ctx.lineTo(w - len * Math.cos(-a), h/2 - len * Math.sin(-a));
+        ctx.stroke();
+      }
+      if (n.arrowStart) {
+        const len = Math.max(10, (n.stroke.width || 1) * 5);
+        const a = Math.PI * 26 / 180;
+        ctx.beginPath();
+        ctx.moveTo(0, h/2);
+        ctx.lineTo(len * Math.cos(a), h/2 - len * Math.sin(a));
+        ctx.moveTo(0, h/2);
+        ctx.lineTo(len * Math.cos(-a), h/2 - len * Math.sin(-a));
         ctx.stroke();
       }
       ctx.setLineDash([]);
@@ -516,6 +567,7 @@
   }
 
   function drawText(ctx, n, doc, w, h) {
+    if (global.TextEngine && global.TextEngine.draw) return global.TextEngine.draw(ctx, n, doc, w, h);
     // The DOM textarea is the single source of pixels while inline editing.
     // Painting the canvas copy as well creates the doubled-text artifact.
     if (n.id === editingTextId) return;
@@ -864,7 +916,7 @@
       if (node._rotLabel) {
         // Rotation angle label — shown during rotate drag, anchored just
         // above the selection top so it's visible without a rotate dot.
-        const at = `${Math.round((node.rotation||0)*180/Math.PI)}°`;
+        const at = `${(M.toFigmaDeg ? M.toFigmaDeg(node.rotation) : Math.round((node.rotation||0)*180/Math.PI))}°`;
         const aw = ctx.measureText(at).width;
         const lx = center.x;
         const ly = topMid.y - 14;

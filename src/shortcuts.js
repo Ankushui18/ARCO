@@ -87,6 +87,12 @@
   def('arrowright', 'Nudge right (⇧ 10px)', 'Editing', (a, e) => a.nudge(1, 0, e));
   def('arrowup', 'Nudge up (⇧ 10px)', 'Editing', (a, e) => a.nudge(0, -1, e));
   def('arrowdown', 'Nudge down (⇧ 10px)', 'Editing', (a, e) => a.nudge(0, 1, e));
+  def('alt+w', 'Align top', 'Editing', (a) => a.alignSel && a.alignSel('top'));
+  def('alt+a', 'Align left', 'Editing', (a) => a.alignSel && a.alignSel('left'));
+  def('alt+s', 'Align bottom', 'Editing', (a) => a.alignSel && a.alignSel('bottom'));
+  def('alt+d', 'Align right', 'Editing', (a) => a.alignSel && a.alignSel('right'));
+  def('alt+v', 'Align vertical centers', 'Editing', (a) => a.alignSel && a.alignSel('vcenter'));
+  def('alt+h', 'Align horizontal centers', 'Editing', (a) => a.alignSel && a.alignSel('hcenter'));
   def('mod+arrowleft', 'Decrease width', 'Transform', (a, e) => a.resizeBy(-1, 0, e));
   def('mod+arrowright', 'Increase width', 'Transform', (a, e) => a.resizeBy(1, 0, e));
   def('mod+arrowup', 'Decrease height', 'Transform', (a, e) => a.resizeBy(0, -1, e));

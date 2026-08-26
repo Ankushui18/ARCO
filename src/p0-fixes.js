@@ -152,18 +152,23 @@
       this.markDirty();
     };
     App.zoomToFit = function(){
+      if (this.doc && this.page) {
+        try { this.layoutDoc(this.doc, this.page); } catch (e) {}
+      }
+      const rect = this.canvas ? this.canvas.getBoundingClientRect() : { width:0, height:0 };
+      if (!rect.width || !rect.height) {
+        requestAnimationFrame(() => this.zoomToFit());
+        return;
+      }
       const b = R.pageBounds(this.page);
       if (!b || !isFinite(b.w) || !isFinite(b.h) || b.w<1 || b.h<1){
-        // empty doc — reset to origin
-        const rect = this.canvas.getBoundingClientRect();
         this.view.zoom = 1;
         this.view.ox = rect.width/2 - 100;
         this.view.oy = rect.height/2 - 100;
         this.markDirty();
         return;
       }
-      const rect = this.canvas.getBoundingClientRect();
-      const z = Math.min((rect.width-80)/Math.max(1,b.w), (rect.height-80)/Math.max(1,b.h));
+      const z = Math.min((rect.width-96)/Math.max(1,b.w), (rect.height-96)/Math.max(1,b.h));
       this.view.zoom = Math.max(0.02, Math.min(64,z));
       this.view.ox = (rect.width - b.w*this.view.zoom)/2 - b.x*this.view.zoom;
       this.view.oy = (rect.height - b.h*this.view.zoom)/2 - b.y*this.view.zoom;
@@ -794,9 +799,15 @@
         let ang = Math.atan2(p.y-d.center.y, p.x-d.center.x);
         let rot = ang - d.sa;
         if(e.shiftKey){ const s=Math.PI/12; rot=Math.round(rot/s)*s; }
-        for(const s of d.starts){ const n=this.page.nodes[s.id]; if(n) n.rotation = s.r + rot; }
+        for(const s of d.starts){
+          const n=this.page.nodes[s.id]; if(!n) continue;
+          let next = s.r + rot;
+          while (next > Math.PI) next -= Math.PI * 2;
+          while (next < -Math.PI) next += Math.PI * 2;
+          n.rotation = next;
+        }
         this.markDirty();
-        this.status(Math.round(rot*180/Math.PI)+'°');
+        this.status((M.toFigmaDeg ? M.toFigmaDeg(rot) : Math.round(rot*180/Math.PI))+'°');
         return;
       }
       _onMove2(e);
@@ -1107,6 +1118,6 @@
     // bindCanvas already wires one. Adding a second listener caused onDbl
     // to fire twice per double-click and spawned duplicate text editors.
 
-    App.toast('P0 engine closeout loaded', 1500, 'success');
+    // Silent — a boot toast made the product feel like a debug build.
   });
 })(window);

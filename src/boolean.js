@@ -448,9 +448,9 @@
   // path's bbox must equal the node's bbox so handles, hit-testing and
   // resize line up (Figma invariant). First vertex at top (−90°); star
   // inner radius = 0.382 (golden ratio, Figma-like).
-  function shapePts(kind, count, w, h) {
+  function shapePts(kind, count, w, h, ratio) {
     const n = kind === 'star' ? count * 2 : Math.max(3, count || 6);
-    const rI = 0.382;
+    const rI = (typeof ratio === 'number' && ratio > 0 && ratio < 1) ? ratio : 0.382;
     const pts = [];
     for (let i = 0; i < n; i++) {
       const ang = -Math.PI / 2 + (i * 2 * Math.PI) / n;
@@ -462,8 +462,8 @@
     const sx = x1 === x0 ? 1 : w / (x1 - x0), sy = y1 === y0 ? 1 : h / (y1 - y0);
     return pts.map(p => [(p[0] - x0) * sx, (p[1] - y0) * sy]);
   }
-  function shapeD(kind, count, w, h) {
-    const pts = shapePts(kind, count, w, h);
+  function shapeD(kind, count, w, h, ratio) {
+    const pts = shapePts(kind, count, w, h, ratio);
     let d = 'M ' + r2(pts[0][0]) + ' ' + r2(pts[0][1]);
     for (let i = 1; i < pts.length; i++) d += ' L ' + r2(pts[i][0]) + ' ' + r2(pts[i][1]);
     return d + ' Z';

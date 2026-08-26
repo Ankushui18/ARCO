@@ -393,14 +393,22 @@
 
   function saveDoc(doc) {
     doc.updatedAt = Date.now();
-    let thumb = '';
-    try {
-      global.App.layoutDoc && global.App.layoutDoc(doc);
-      thumb = thumbDataURL(doc, doc.pages[0], 480);
-    } catch (e) { console.warn('thumb/rerender failed', e); }
     const existing = M.store.get(doc.id);
     const createdAt = (existing && existing.createdAt) || doc.createdAt || Date.now();
-    M.store.put({ id: doc.id, name: doc.name, createdAt, updatedAt: doc.updatedAt, pageCount: doc.pages.length, thumb, doc });
+    let nodeCount = 0;
+    try {
+      for (const p of (doc.pages || [])) nodeCount += Object.keys(p.nodes || {}).length;
+    } catch (e) {}
+    // Never layout the LIVE document just to make a thumb — that writes
+    // _wt/_wc onto every node and is what made imported files fail IDB.
+    let thumb = (existing && existing.thumb) || '';
+    if (nodeCount && nodeCount < 250 && !thumb) {
+      try {
+        const clone = JSON.parse(JSON.stringify(doc));
+        thumb = thumbDataURL(clone, clone.pages[0], 320);
+      } catch (e) { console.warn('thumb/rerender failed', e); }
+    }
+    M.store.put({ id: doc.id, name: doc.name, createdAt, updatedAt: doc.updatedAt, pageCount: (doc.pages || []).length, thumb, doc });
   }
 
   function thumbDataURL(doc, page, width) {

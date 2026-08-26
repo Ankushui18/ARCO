@@ -56,7 +56,17 @@
       location.hash = '#/file/' + id;
       this.joinCollab();
       this.markDirty();
-      this.zoomToFit();
+      this._fitAfterLayout();
+    },
+    _fitAfterLayout() {
+      const run = () => {
+        if (!this.doc || !this.page || !this.canvas) return;
+        try { this.layoutDoc(this.doc, this.page); } catch (e) {}
+        const rect = this.canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) { requestAnimationFrame(run); return; }
+        this.zoomToFit();
+      };
+      requestAnimationFrame(() => requestAnimationFrame(run));
     },
     goDashboard() {
       this.saveNow();
@@ -159,7 +169,6 @@
       R.drawSelection(ctx, this.view, this.sel, this.page);
       if (this.devMode) R.drawDevMeasure(ctx, this.view, this.page, this.doc, this.sel);
       if (this.marquee) R.drawMarquee(ctx, this.marquee);
-      this.drawEmptyState(ctx);
       this.drawPenOverlay(ctx);
       R.drawSnapGuides(ctx, this.view, this._snapGuides);
       R.drawRulers(ctx, this.view, rect.width, rect.height);
@@ -168,15 +177,6 @@
     saveNow() {
       if (!this.doc) return;
       global.Dash.saveDoc(this.doc);
-      // specific + actionable + non-destructive error model (spec §33):
-      // the document stays open and usable; the user can back it up as .fig.
-      if (global.Model.store.quotaError) {
-        const A = this;
-        this.toast('Couldn\'t save this project. Your document is still open.', 12000, [
-          { label: 'Export backup (.fig)', fn: () => { try { A.exportBackupFig(); A.toast('Backup exported'); } catch (err) { A.toast('Backup failed: ' + err.message); } } },
-          { label: 'Try again', fn: () => { A.saveNow(); } },
-        ]);
-      }
     },
     exportBackupFig() {
       this.exportFigAsync(this.doc, this.doc.name || 'penfig').then(
@@ -469,9 +469,8 @@
         const distFromSegment = Math.hypot(mx - px, my - py);
         // signed distance outward from edge (negative = outside the shape)
         const signedOut = (mx - mid.x)*nx + (my - mid.y)*ny;
-        // Hover zone: 6px inside to 32px outside the edge, within edge bounds
-        // (plus 5% overhang on each end)
-        inZone = signedOut > -6 && signedOut < 34 && distFromSegment < 20;
+        // Figma: a thin halo just outside the bounds, not a 34px band.
+        inZone = signedOut > 0 && signedOut < 16 && distFromSegment < 14;
       } else {
         // multi-select: AABB
         let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
@@ -485,7 +484,7 @@
           const z = this.view.zoom, ox = this.view.ox, oy = this.view.oy;
           const sx0 = x0*z+ox, sx1 = x1*z+ox;
           const sy0 = y0*z+oy;
-          inZone = mx >= sx0 - 10 && mx <= sx1 + 10 && my >= sy0 - 34 && my <= sy0 + 10;
+          inZone = mx >= sx0 - 8 && mx <= sx1 + 8 && my >= sy0 - 16 && my <= sy0 + 4;
         }
       }
       this.view._hoverRotate = inZone;
@@ -604,6 +603,14 @@
       const entry = { id: doc.id, name: doc.name, doc, updatedAt: Date.now() };
       M.store.put(entry);
       this.openFile(doc.id);
+      requestAnimationFrame(() => {
+        this._fitAfterLayout();
+        const page = this.page;
+        if (page && page.tops && page.tops.length) {
+          const first = page.tops.find(id => page.nodes[id] && page.nodes[id].visible !== false) || page.tops[0];
+          if (first) this.setSel([first]);
+        }
+      });
       if (kind === 'fig' && report) {
         // Collect missing/unavailable fonts.
         const fontSet = new Set();
@@ -894,6 +901,19 @@
     hitTest(p) {
       const page = this.page;
       const W = global.World;
+      // Figma: click the section/frame title (just above the box) to select
+      // the container itself — required to Shift-select two sections.
+      if (page && this.view) {
+        const z = this.view.zoom || 1;
+        const labelH = 20 / z;
+        for (let i = page.tops.length - 1; i >= 0; i--) {
+          const t = page.nodes[page.tops[i]];
+          if (!t || t.visible === false || t.type !== 'frame') continue;
+          const b = t._w || { x: t.x, y: t.y, w: t.w, h: t.h };
+          const labelW = Math.max(72 / z, Math.min(b.w, ((t.name || '').length * 7 + 18) / z));
+          if (p.x >= b.x && p.x <= b.x + labelW && p.y >= b.y - labelH && p.y < b.y + 1 / z) return t;
+        }
+      }
       const frameClips = (n) => {
         if (!(n.type === 'frame' && n.clips) || !n._w) return true;
         return p.x >= n._w.x - 1 && p.x <= n._w.x + n._w.w + 1 && p.y >= n._w.y - 1 && p.y <= n._w.y + n._w.h + 1;
@@ -1157,7 +1177,7 @@
           this.setSel(this.sel.slice());
           return;
         }
-        const alreadySelected = this.sel.length === 1 && this.sel[0] === hit.id;
+        const alreadySelected = this.sel.includes(hit.id);
         // Click-click (slower than dblclick, but same intent) → edit text.
         // Fast double-clicks are handled by onDbl() — that's the primary path.
         if (hit.type === 'text' && alreadySelected) {
@@ -1288,7 +1308,7 @@
         while (rot < -Math.PI) rot += Math.PI * 2;
         d.node.rotation = rot;
         this.markDirty();
-        const deg = Math.round(rot * 180 / Math.PI);
+        const deg = M.toFigmaDeg ? M.toFigmaDeg(rot) : Math.round(rot * 180 / Math.PI);
         this.status(` ${deg}°`);
       } else if (d.kind === 'marquee') {
         const x = Math.min(d.sx, p.x), y = Math.min(d.sy, p.y);
@@ -1296,7 +1316,7 @@
         this.marquee = this.toScreen({ x, y });
         this.marquee.w = w * this.view.zoom; this.marquee.h = h * this.view.zoom;
         // live selection preview
-        const ids = marqueeSelect(this.page, { x, y, w, h });
+        const ids = marqueeSelect(this.page, { x, y, w, h }, { x: d.sx, y: d.sy });
         this._marqueePreview = e.altKey ? d.base.filter(id => !ids.includes(id)) : (d.base ? [...new Set([...d.base, ...ids])] : ids);
         this.sel = this._marqueePreview;
         this.markDirty();
@@ -1584,6 +1604,10 @@
       // Clicks that never crossed the movement threshold — just cancel any history.
       if (d.kind === 'pending-move' || d.kind === 'pending-marquee') {
         this.history.cancel();
+        if (d.kind === 'pending-move' && d.hit && this.sel.length > 1 && this.sel.includes(d.hit.id)) {
+          // Figma: click (no drag) on one item of a multi-select → select only that
+          this.setSel([d.hit.id]);
+        }
         if (d.kind === 'pending-marquee') {
           // click on empty space with no modifier → clear selection already done in onDown
           this.marquee = null;
@@ -1945,28 +1969,6 @@
         ctx.restore();
       }
     },
-    drawEmptyState(ctx) {
-      if (!this.page) return;
-      let count = 0;
-      const visit = (id) => { const n = this.page.nodes[id]; if (!n) return; if (n.visible !== false) count++; for (const c of n.children) visit(c); };
-      for (const t of this.page.tops) visit(t);
-      if (count || this.pen || this.pencil) return;
-      const rect = this.canvas.getBoundingClientRect();
-      const cx = rect.width / 2, cy = rect.height / 2;
-      ctx.save();
-      const dpr = window.devicePixelRatio || 1;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = 'rgba(180,180,190,0.45)';
-      ctx.textAlign = 'center';
-      ctx.font = '600 20px Inter, "Helvetica Neue", Arial, sans-serif';
-      ctx.fillText('Start designing', cx, cy - 24);
-      ctx.font = '13px Inter, "Helvetica Neue", Arial, sans-serif';
-      ctx.fillStyle = 'rgba(120,120,130,0.45)';
-      ctx.fillText('F  Frame      R  Rectangle      T  Text      P  Pen      N  Pencil', cx, cy + 6);
-      ctx.fillText('Or import a Figma file (⌘S saves; ⌘/ runs a command)', cx, cy + 26);
-      ctx.restore();
-    },
-
     // ------------------------------------------------------------- text editing
     _textEdit: null,
     beginTextEdit(n, opts) {
@@ -2424,10 +2426,21 @@
       this.zoomAt(rect.width / 2, rect.height / 2, f);
     },
     zoomToFit() {
+      if (this.doc && this.page) {
+        try { this.layoutDoc(this.doc, this.page); } catch (e) {}
+      }
       const b = R.pageBounds(this.page);
-      const rect = this.canvas.getBoundingClientRect();
-      const z = Math.min(3, Math.min((rect.width - 80) / Math.max(1, b.w), (rect.height - 80) / Math.max(1, b.h)));
-      this.view.zoom = Math.max(0.04, z);
+      const rect = this.canvas ? this.canvas.getBoundingClientRect() : { width: 0, height: 0 };
+      if (!rect.width || !rect.height) { requestAnimationFrame(() => this.zoomToFit()); return; }
+      if (!b || !isFinite(b.w) || !isFinite(b.h) || b.w < 1 || b.h < 1) {
+        this.view.zoom = 1;
+        this.view.ox = rect.width / 2 - 80;
+        this.view.oy = rect.height / 2 - 80;
+        this.markDirty();
+        return;
+      }
+      const z = Math.min(4, Math.min((rect.width - 96) / Math.max(1, b.w), (rect.height - 96) / Math.max(1, b.h)));
+      this.view.zoom = Math.max(0.02, z);
       this.view.ox = (rect.width - b.w * this.view.zoom) / 2 - b.x * this.view.zoom;
       this.view.oy = (rect.height - b.h * this.view.zoom) / 2 - b.y * this.view.zoom;
       this.markDirty();
@@ -2504,6 +2517,14 @@
       if (this.history.redo(this.doc)) { this.setSel([]); }
     },
     selectAll() { this.setSel(this.page.tops.slice()); },
+    alignSel(kind) {
+      if (!this.sel.length || !global.Arrange) return;
+      this.history.begin(this.doc);
+      global.Arrange.align(this.page, this.sel, kind);
+      this.history.end(this.doc);
+      global.Panels.refreshInspector();
+      this.markDirty();
+    },
     nudge(dx, dy, e) {
       if (!this.sel.length) return;
       const step = e && e.shiftKey ? 10 : 1;

@@ -190,8 +190,6 @@
     draft:    ['<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>'],
     trash2:   ['<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6"/>'],
     duplicate:['<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V4a2 2 0 012-2h12"/>'],
-    // minimap / navigator
-    minimap: ['<rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="4" height="4" fill="currentColor" stroke="none" opacity=".6"/><rect x="13" y="7" width="4" height="4" fill="currentColor" stroke="none" opacity=".6"/><rect x="7" y="13" width="10" height="4" fill="currentColor" stroke="none" opacity=".6"/>'],
     // search filter
     filter: ['<path d="M3 5h18M6 12h12M10 19h4"/>'],
     // check-circle for success

@@ -3,7 +3,7 @@
  * custom tool cursors, canvas mini-map, zoom-to-selection, keyboard
  * selection history (Tab/⇧Tab), autosave crash-recovery journal,
  * command-palette search filter, batch export modal, design-system
- * health panel, responsive preview toggle, product-states overlay,
+ * health panel,
  * layer search filter, transform-origin support, skew transforms,
  * viewport culling hints, image fill-mode controls, rotation snapping
  * labels, smart distance indicators, and selection-xywh readout.
@@ -39,13 +39,17 @@
     function journalTick(){
       if (!App.doc) return;
       try{
-        const snap = {
+        let nodes = 0;
+        for (const p of App.doc.pages || []) nodes += Object.keys(p.nodes || {}).length;
+        // Metadata only. Dumping the whole document here used to blow the
+        // 5 MB localStorage cap and could wipe recovery after a .fig import.
+        localStorage.setItem(RECOVERY_KEY, JSON.stringify({
           at: Date.now(),
+          id: App.doc.id,
           name: App.doc.name,
           pageIndex: App.pageIndex,
-          doc: JSON.parse(JSON.stringify(App.doc)),
-        };
-        localStorage.setItem(RECOVERY_KEY, JSON.stringify(snap));
+          nodes,
+        }));
       }catch(e){ /* ignore quota */ }
     }
     function startJournal(){
@@ -459,90 +463,10 @@
     }
 
     // =========================================================
-    // 9. Canvas mini-map (P0)
+    // 9. Canvas mini-map — removed. It was a dark 180×120 overlay
+    // in the canvas corner (looked like a tablet/wireframe preview).
+    // Figma does not show a persistent navigator on the canvas.
     // =========================================================
-    App._minimap = null;
-    function buildMinimap(){
-      const wrap = document.getElementById('ed-canvas-wrap');
-      if (!wrap || wrap.querySelector('.ed-minimap')) return;
-      const mm = document.createElement('canvas');
-      mm.className='ed-minimap'; mm.width=180; mm.height=120;
-      mm.title='Minimap — click/drag to pan';
-      wrap.appendChild(mm);
-      App._minimap = mm;
-      let dragging=false;
-      function mmToWorld(e){
-        const r = mm.getBoundingClientRect();
-        const u = (e.clientX - r.left)/r.width;
-        const v = (e.clientY - r.top)/r.height;
-        const page = App.page; if(!page) return null;
-        const b = R.pageBounds(page) || {x:0,y:0,w:1000,h:1000};
-        const pad=50;
-        const wx = (b.x-pad) + u*(b.w+pad*2);
-        const wy = (b.y-pad) + v*(b.h+pad*2);
-        return {x:wx,y:wy};
-      }
-      mm.addEventListener('mousedown', e=>{
-        dragging=true;
-        const wp = mmToWorld(e); if(!wp) return;
-        const cr = App.canvas.getBoundingClientRect();
-        App.view.ox = -wp.x*App.view.zoom + cr.width/2;
-        App.view.oy = -wy*App.view.zoom + cr.height/2;
-        App.markDirty();
-      });
-      window.addEventListener('mousemove', e=>{
-        if(!dragging) return;
-        const wp = mmToWorld(e); if(!wp) return;
-        const cr = App.canvas.getBoundingClientRect();
-        App.view.ox = -wp.x*App.view.zoom + cr.width/2;
-        App.view.oy = -wy*App.view.zoom + cr.height/2;
-        App.markDirty();
-      });
-      window.addEventListener('mouseup', ()=>dragging=false);
-    }
-    const _buildChrome = App.buildChrome.bind(App);
-    App.buildChrome = function(){
-      _buildChrome();
-      buildMinimap();
-    };
-    // render minimap after redraw
-    const _redraw = App.redraw.bind(App);
-    App.redraw = function(){
-      _redraw();
-      drawMinimap();
-    };
-    function drawMinimap(){
-      const mm = App._minimap; if(!mm) return;
-      const ctx = mm.getContext('2d'); if(!ctx) return;
-      const page = App.page; if(!page) return;
-      const b = R.pageBounds(page) || {x:0,y:0,w:100,h:100};
-      const pad=80;
-      const W=mm.width, H=mm.height;
-      ctx.fillStyle='#1a1a1a'; ctx.fillRect(0,0,W,H);
-      const sx = W/(b.w+pad*2), sy = H/(b.h+pad*2);
-      const s = Math.min(sx,sy);
-      const ox = (W - (b.w+pad*2)*s)/2, oy=(H-(b.h+pad*2)*s)/2;
-      ctx.strokeStyle='#444'; ctx.lineWidth=1;
-      // draw page rects
-      ctx.fillStyle='#3a8fd9';
-      M.forEachNode && M.forEachNode(page, {children:page.tops}, n=>{
-        if(n.type==='page'||!n._w) return;
-        const bb = n._w;
-        const x = ox+(bb.x-b.x+pad)*s;
-        const y = oy+(bb.y-b.y+pad)*s;
-        const w = bb.w*s, h2=bb.h*s;
-        ctx.fillStyle = n.type==='frame' ? '#2d3e55' : n.type==='text' ? '#6ea8d6' : '#4a6a8a';
-        ctx.fillRect(x,y,Math.max(1,w),Math.max(1,h2));
-      });
-      // viewport rect
-      const cr = App.canvas.getBoundingClientRect();
-      const vx = (-App.view.ox/App.view.zoom - b.x + pad)*s + ox;
-      const vy = (-App.view.oy/App.view.zoom - b.y + pad)*s + oy;
-      const vw = (cr.width/App.view.zoom)*s;
-      const vh = (cr.height/App.view.zoom)*s;
-      ctx.strokeStyle='#0d99ff'; ctx.lineWidth=1.5;
-      ctx.strokeRect(vx,vy,vw,vh);
-    }
 
     // =========================================================
     // 10. Design System Health panel (P1 §25)
@@ -604,56 +528,6 @@
       });
     };
 
-    // =========================================================
-    // 11. Responsive preview (P1 §13)
-    // =========================================================
-    App._responsiveW = null;
-    App.toggleResponsivePreview = function(w){
-      const cw = document.getElementById('ed-canvas-wrap');
-      if(!cw) return;
-      if (App._responsiveW === w){
-        cw.style.maxWidth=''; App._responsiveW=null; App.toast('Responsive preview off');
-      } else {
-        cw.style.maxWidth = w+'px';
-        App._responsiveW = w;
-        App.toast(`Responsive preview: ${w}px`);
-      }
-      setTimeout(()=>{ App.resizeCanvas(); App.markDirty(); }, 60);
-    };
-
-    // =========================================================
-    // 12. Product states (P1 §26) - toast can accept severity
-    // =========================================================
-    App._stateOverride = null; // 'loading'|'empty'|'error'|'success'|'offline'
-    App.setProductState = function(state){
-      App._stateOverride = state;
-      App.markDirty();
-    };
-    // render overlay
-    const _drawEmpty = App.drawEmptyState || function(){};
-    App.drawEmptyState = function(ctx){
-      _drawEmpty.call(this, ctx);
-      if (!App._stateOverride) return;
-      const cr = this.canvas.getBoundingClientRect();
-      const z = this.view.zoom;
-      ctx.save();
-      ctx.fillStyle='rgba(30,30,30,0.72)';
-      ctx.fillRect(0,0,cr.width,cr.height);
-      ctx.fillStyle='#fff';
-      ctx.font='14px Inter,system-ui,sans-serif';
-      ctx.textAlign='center';
-      const msg = {
-        loading: 'Loading…',
-        empty: 'Nothing here yet',
-        error: 'Something went wrong',
-        success: 'Success',
-        offline: 'You are offline'
-      }[App._stateOverride]||'';
-      ctx.fillText(msg, cr.width/2, cr.height/2);
-      ctx.restore();
-    };
-
-    // =========================================================
     // 13. Command palette — add missing P0 commands (spec §9)
     // =========================================================
     const _buildPalette = App.showCommandPalette;
@@ -689,10 +563,6 @@
         inp.click();
       }},
       {label:'Design system health', hint:'', kw:'lint health check a11y contrast tokens', run:()=>App.runDesignHealth()},
-      {label:'Responsive preview — 390px (mobile)', hint:'', kw:'responsive mobile preview', run:()=>App.toggleResponsivePreview(390)},
-      {label:'Responsive preview — 768px (tablet)', hint:'', kw:'responsive tablet preview', run:()=>App.toggleResponsivePreview(768)},
-      {label:'Responsive preview — 1440px (desktop)', hint:'', kw:'responsive desktop preview', run:()=>App.toggleResponsivePreview(1440)},
-      {label:'Responsive preview — off', hint:'', kw:'responsive off full', run:()=>App.toggleResponsivePreview(Infinity)},
       {label:'Rotate 90° clockwise', hint:'', kw:'rotate', run:()=>{App.history.begin(App.doc);App.sel.forEach(id=>{const n=App.page.nodes[id];if(n)n.rotation=(n.rotation||0)+Math.PI/2;});App.history.end(App.doc);App.markDirty();}},
       {label:'Rotate 90° counter-clockwise', hint:'', kw:'rotate', run:()=>{App.history.begin(App.doc);App.sel.forEach(id=>{const n=App.page.nodes[id];if(n)n.rotation=(n.rotation||0)-Math.PI/2;});App.history.end(App.doc);App.markDirty();}},
     );
@@ -940,20 +810,6 @@
             <div class="pf-title">Design & QA</div>
             <button data-q="health">${Ico('pulse',{size:12})} Design system health</button>
             <button data-q="a11y">${Ico('info',{size:12})} Accessibility quick check (⇧⌘A)</button>
-            <hr>
-            <div class="pf-title">Responsive preview</div>
-            <button data-q="r390">${Ico('phone',{size:12})} 390px (mobile)</button>
-            <button data-q="r768">${Ico('tablet',{size:12})} 768px (tablet)</button>
-            <button data-q="r1440">${Ico('desktop',{size:12})} 1440px (desktop)</button>
-            <button data-q="roff">${Ico('close',{size:11})} Off</button>
-            <hr>
-            <div class="pf-title">Product states</div>
-            <button data-q="sdef">Default</button>
-            <button data-q="sload">Loading</button>
-            <button data-q="semp">Empty</button>
-            <button data-q="serr">Error</button>
-            <button data-q="ssuc">Success</button>
-            <button data-q="soff">No override</button>
           `;
           const r = btn.getBoundingClientRect();
           m.style.left = Math.min(r.left, innerWidth-260)+'px';
@@ -966,16 +822,6 @@
             const q=b.dataset.q;
             if(q==='health') App.runDesignHealth();
             else if(q==='a11y') App.runA11yCheck();
-            else if(q==='r390') App.toggleResponsivePreview(390);
-            else if(q==='r768') App.toggleResponsivePreview(768);
-            else if(q==='r1440') App.toggleResponsivePreview(1440);
-            else if(q==='roff') App.toggleResponsivePreview(Infinity);
-            else if(q==='sdef') App.setProductState(null);
-            else if(q==='sload') App.setProductState('loading');
-            else if(q==='semp') App.setProductState('empty');
-            else if(q==='serr') App.setProductState('error');
-            else if(q==='ssuc') App.setProductState('success');
-            else if(q==='soff') App.setProductState(null);
           }));
         });
         // insert before export
