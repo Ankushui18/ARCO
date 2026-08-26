@@ -242,14 +242,22 @@
           return;
         }
         if (cls.kind === 'inside') {
-          c.style.cursor = 'default';
+          // When inside the selection OBB, still show I-beam if selection IS a text node,
+          // or if the hovered node under the pointer is a text node.
+          const onlySel = this.sel.length === 1 ? this.page.nodes[this.sel[0]] : null;
+          if (onlySel && onlySel.type === 'text') c.style.cursor = 'text';
+          else {
+            const under = this.hitTest(this.toWorld(e));
+            c.style.cursor = (under && under.type === 'text') ? 'text' : 'default';
+          }
           this.view._hoverRotate = false;
           return;
         }
         // 'outside' with no selection nearby — fall through to hitTest
         // default cursor.
       }
-      c.style.cursor = this.hitTest(this.toWorld(e)) ? 'default' : 'default';
+      const hit = this.hitTest(this.toWorld(e));
+      c.style.cursor = (hit && hit.type === 'text') ? 'text' : (hit ? 'default' : 'default');
     };
 
     // Make sure rotation drag starts work even when handleAt returns a

@@ -309,7 +309,11 @@
       let lx,ly;
       if (horizontal) { lx=padL+cur; ly=padT+cp; }
       else { lx=padL+cp; ly=padT+cur; }
-      placeItem(page, it, lx, ly, it.placedMain, cross);
+      // placeItem expects physical width/height. The distributor works in
+      // logical main/cross axes, so vertical stacks must swap them back.
+      placeItem(page, it, lx, ly,
+        horizontal ? it.placedMain : cross,
+        horizontal ? cross : it.placedMain);
       if (al.main === 'space-between') cur += it.placedMain + (i<nn-1 ? gap + (cMain-totalMain-gaps)/Math.max(1,nn-1) : 0);
       else if (al.main === 'space-evenly') cur += it.placedMain + step + gap;
       else cur += it.placedMain + gap;
@@ -347,7 +351,9 @@
         let lx,ly;
         if (horizontal) { lx=padL+cur; ly=padT+cc+cp; }
         else { lx=padL+cc+cp; ly=padT+cur; }
-        placeItem(page, it, lx, ly, it.placedMain, cross);
+        placeItem(page, it, lx, ly,
+          horizontal ? it.placedMain : cross,
+          horizontal ? cross : it.placedMain);
         cur += it.placedMain + gap;
       }
       cc += tCross + gapC;

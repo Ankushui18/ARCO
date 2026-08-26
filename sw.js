@@ -10,7 +10,7 @@
  *   - Bumped cache name = old caches deleted on activate.
  */
 
-const CACHE = 'penfig-app-v9';
+const CACHE = 'penfig-app-v20';
 const STATIC_ASSETS = [
   './',
   './index.html',

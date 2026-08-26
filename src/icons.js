@@ -6,30 +6,34 @@
 (function(global) {
   'use strict';
 
-  // Each entry: [pathData, extraSvg, fillStyle]
+  // Each entry: [pathData, extraSvg, opts]
   // pathData may be a single string or array of strings; extraSvg is optional raw svg (e.g. <circle>, <rect>).
+  // opts.fill: true to fill paths with currentColor (e.g., solid cursor shapes).
+  // opts.stroke: explicit stroke-width override (default 1.6).
   const I = {
     // ── branding ──
-    logo: ['M4 20L12 4L20 20M7.5 14.5H16.5', '<rect x="2" y="2" width="20" height="20" rx="5" fill="none" stroke="currentColor" stroke-width="0"/>'],
+    logo: ['M4 20L12 4L20 20M7.5 14.5H16.5', ''],
 
     // ── tools ──
-    move:     ['M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20'],
-    // Frame icon: Figma-style — square outline with small corner L-ticks.
-    frame:    [['<rect x="3" y="3" width="18" height="18" rx="1.5"/>','M3 6V3h3','M21 6V3h-3','M21 18v3h-3','M3 18v3h3']],
-    section:  ['<rect x="3" y="5" width="18" height="14" rx="2" stroke-dasharray="2 2"/>'],
-    rect:     ['<rect x="4" y="5" width="16" height="14" rx="1.5"/>'],
+    // Move tool: filled arrow cursor (like Figma/Sketch)
+    move:     [['M4 3l0 14 3.6-3.6L12 20l2-0.8-3.5-7L17 12z'], '', {fill:true}],
+    scale:    [['M4 9V4h5','M15 4h5v5','M20 15v5h-5','M9 20H4v-5','M8 8l8 8','M16 8l-8 8']],
+    // Frame icon: clean square with corner notches (Figma-style)
+    frame:    [['<rect x="3.5" y="3.5" width="17" height="17" rx="1"/>','M3.5 7.5h3M3.5 16.5h3M20.5 7.5h-3M20.5 16.5h-3M7.5 3.5v3M16.5 3.5v3M7.5 20.5v-3M16.5 20.5v-3']],
+    section:  ['<rect x="3" y="5" width="18" height="14" rx="2" stroke-dasharray="3 2"/>'],
+    rect:     ['<rect x="4" y="5" width="16" height="14" rx="1"/>'],
     rect_radius: ['<rect x="4" y="5" width="16" height="14" rx="4"/>'],
-    ellipse:  ['<ellipse cx="12" cy="12" rx="8" ry="6.5"/>'],
-    line:     ['M5 19L19 5'],
-    arrow:    ['M5 19L19 5M19 5H11M19 5V13'],
-    pen:      ['M4 20l4-1 11-11-3-3L5 16l-1 4zM14 6l3 3'],
-    pencil:   ['M15.5 4.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L15.5 4.5z'],
-    polygon:  ['<polygon points="12,3 21,9 18,20 6,20 3,9"/>'],
-    star:     ['<polygon points="12,3 14.6,9 21,9.8 16.2,14.3 17.6,21 12,17.6 6.4,21 7.8,14.3 3,9.8 9.4,9"/>'],
-    triangle: ['<polygon points="12,4 21,20 3,20"/>'],
-    text:     ['M5 5V4h14v1M12 4v16M8.5 20h7'],
-    hand:     ['M7 11V6a1.5 1.5 0 013 0v4M10 10V4.5a1.5 1.5 0 013 0V10M13 10V5.5a1.5 1.5 0 013 0V11M16 11V7.5a1.5 1.5 0 013 0V14a7 7 0 01-7 7h-1a6 6 0 01-5.2-3l-2.3-4a1.6 1.6 0 012.6-1.9L8 16v-5a1.5 1.5 0 013 0v1'],
-    comment:  ['<path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8v.5z"/>'],
+    ellipse:  ['<ellipse cx="12" cy="12" rx="8" ry="7"/>'],
+    line:     ['M5 18.5L19 5.5'],
+    arrow:    ['M6 18L18 6M18 6h-6M18 6v6'],
+    pen:      ['M4 20l1.3-4.5L15.5 5.2a1.8 1.8 0 012.6 0l1.7 1.7a1.8 1.8 0 010 2.6L9.5 19.7 4 20zM14.5 6.2l3.3 3.3'],
+    pencil:   ['M15.5 4.5a2.12 2.12 0 013 3L7.5 18.5 4 20l1.5-3.5z'],
+    polygon:  ['<polygon points="12,4 20,9.5 17,20 7,20 4,9.5"/>'],
+    star:     ['<polygon points="12,3.5 14.5,9.5 21,10 16,14.5 17.5,21 12,17.8 6.5,21 8,14.5 3,10 9.5,9.5"/>'],
+    triangle: ['<polygon points="12,4.5 20.5,19.5 3.5,19.5"/>'],
+    text:     ['M5 5h14M12 5v14M8.5 19h7'],
+    hand:     ['M6.5 11V6.5a1.25 1.25 0 012.5 0V11M9 11V5.5a1.25 1.25 0 012.5 0V11M11.5 11V5a1.25 1.25 0 012.5 0v6M14 11V6a1.25 1.25 0 012.5 0v5M16.5 11v4a6.5 6.5 0 01-11.9-3.5l2.4-1.5'],
+    comment:  ['<path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/>'],
 
     // ── ui / common ──
     back:     ['M15 18l-6-6 6-6'],
@@ -54,7 +58,7 @@
     trash:    ['<path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M6 6l1 14a2 2 0 002 2h6a2 2 0 002-2l1-14"/>'],
     download: ['M12 3v12M7 10l5 5 5-5M5 21h14'],
     upload:   ['M12 21V9M7 14l5-5 5 5M5 3h14'],
-    copy:     ['<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/>'],
+    copy:     ['<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/>'],
     edit:     ['M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>'],
     grid:     ['<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>'],
     ruler:    ['<path d="M3 3l18 18-3 3L0 6l3-3z"/><path d="M7.5 10.5l-2 2M10.5 7.5l-2 2M13.5 4.5l-2 2M16.5 13.5l-2 2M19.5 10.5l-2 2" opacity=".6"/>'],
@@ -110,8 +114,8 @@
     zoomout:  ['<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/>'],
     zoomfit:  ['<path d="M4 9V5a1 1 0 011-1h4M20 9V5a1 1 0 00-1-1h-4M4 15v4a1 1 0 001 1h4M20 15v4a1 1 0 01-1 1h-4"/>'],
     // undo/redo
-    undo:     ['<path d="M9 14L4 9l5-5M4 9h11a5 5 0 010 10h-3"/>'],
-    redo:     ['<path d="M15 14l5-5-5-5M20 9H9a5 5 0 000 10h3"/>'],
+    undo:     ['M9 14L4 9l5-5M4 9h11a5 5 0 015 5 5 5 0 01-5 5h-1'],
+    redo:     ['M15 14l5-5-5-5M20 9H9a5 5 0 00-5 5 5 5 0 005 5h1'],
     // boolean ops
     union:    ['<path d="M8 14a6 6 0 100-10 6 6 0 108 6 6 6 0 01-8 4z" fill="currentColor" opacity=".2" stroke="none"/><path d="M8 14a6 6 0 100-10 6 6 0 108 6 6 6 0 01-8 4z"/>'],
     subtract: ['<circle cx="10" cy="10" r="6" fill="currentColor" opacity=".2" stroke="none"/><circle cx="14" cy="14" r="6"/><path d="M14 8a6 6 0 100 12 6 6 0 010-12z" fill="var(--bg2)" stroke="none"/>'],
@@ -120,8 +124,8 @@
     // present / play
     play:     ['<polygon points="6,4 20,12 6,20" fill="currentColor"/>'],
     stop:     ['<rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/>'],
-    // versions / history
-    history:  ['<path d="M3 12a9 9 0 109-9"/><path d="M3 3v6h6M12 7v5l3 2"/>'],
+    // versions / history (clock-with-back-arrow: Figma-style undo-circle)
+    history:  ['<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/><path d="M12 7v5l3.5 2"/>'],
     // plugins
     plugin:   ['<path d="M12 2l3 5 5 1-4 4 1 6-5-3-5 3 1-6-4-4 5-1z"/>'],
     // dev/code
@@ -222,21 +226,29 @@
     opts = opts || {};
     const size = opts.size || 16;
     const cls  = opts.cls  || '';
-    const sw   = (opts.stroke || 1.6).toFixed(2);
-    const title = opts.title ? `<title>${opts.title}</title>` : '';
     const def = I[name];
     if (!def) {
-      // graceful fallback: small square so missing icons are obvious but not broken
+      const sw = (opts.stroke || 1.6).toFixed(2);
       return `<svg class="icon ${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2" stroke-dasharray="2 2"/></svg>`;
     }
+    const defOpts = def[2] || {};
+    const fill = defOpts.fill || opts.fill;
+    const sw   = (opts.stroke || defOpts.stroke || (fill ? 0 : 1.6)).toFixed(2);
+    const title = opts.title ? `<title>${opts.title}</title>` : '';
     // Build inner. def[0] is the primary path(s); def[1] (if exists) is extra raw svg.
     const paths = (Array.isArray(def[0]) ? def[0] : [def[0]]).map(p => {
       // if string starts with '<' treat as raw element, else as path data
       if (p.charAt(0) === '<') return p;
+      // For filled icons (like the move cursor), fill the path; otherwise
+      // stroke it so line icons render consistently.
+      if (fill) {
+        return `<path d="${p}" fill="currentColor" stroke="none"/>`;
+      }
       return `<path d="${p}"/>`;
     }).join('');
     const extra = def[1] || '';
-    return `<svg class="icon ${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${title}${extra}${paths}</svg>`;
+    const fillAttr = fill ? 'currentColor' : 'none';
+    return `<svg class="icon ${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="${fillAttr}" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${title}${extra}${paths}</svg>`;
   }
 
   // Button helper: icon-only action button with tooltip

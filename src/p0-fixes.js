@@ -1103,15 +1103,9 @@
       }
       if (_onDbl) _onDbl(e);
     };
-    // Bind dblclick after canvas is ready (bindCanvas is called on buildChrome)
-    const _bindCanvas = App.bindCanvas && App.bindCanvas.bind(App);
-    if (_bindCanvas){
-      App.bindCanvas = function(){
-        _bindCanvas();
-        const c = this.canvas; if(!c) return;
-        c.addEventListener('dblclick', (e)=>App.onDbl(e));
-      };
-    }
+    // NOTE: do NOT add another c.addEventListener('dblclick', ...) here —
+    // bindCanvas already wires one. Adding a second listener caused onDbl
+    // to fire twice per double-click and spawned duplicate text editors.
 
     App.toast('P0 engine closeout loaded', 1500, 'success');
   });

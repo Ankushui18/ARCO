@@ -168,5 +168,25 @@ console.log('\nALL ENGINE SMOKE TESTS PASSED');
   L.layoutPage(page);
   assert(c.x===50 && c.y===60, 'child of manual frame keeps stored x/y (50,60) got ('+c.x+','+c.y+')');
   assert(c._l.x===50 && c._l.y===60, 'child _l == (50,60)');
-  console.log('PASS:', 'manual-frame child positions preserved');
+console.log('PASS:', 'manual-frame child positions preserved');
+
+// Regression: vertical auto layout distributes logical main/cross axes back
+// into physical height/width. A fill-width + hug-height text item must never
+// become a narrow, extremely tall box (the 41×220 inline-text bug).
+{
+  const doc = M.newDoc('vertical layout regression');
+  const page = doc.pages[0];
+  const card = M.makeNode('frame', { x: 0, y: 0, w: 260, h: 160 });
+  M.attach(doc, page, null, card);
+  M.makeAutoLayout(card, 'v', page);
+  card.al.pad = [{n:20},{n:20},{n:20},{n:20}];
+  const title = M.makeNode('text', { w: 220, h: 22 });
+  title.text.content = 'Auto layout';
+  title.text.size = 17;
+  title.als = { w:'fill', h:'hug', grow:0, align:'auto', absolute:false };
+  M.attach(doc, page, card.id, title);
+  L.layoutPage(page);
+  assert(title.w === 220, 'vertical AL fill-width text stays 220px wide, got '+title.w);
+  assert(title.h < 60, 'vertical AL hug-height text stays compact, got '+title.h);
+}
 })();

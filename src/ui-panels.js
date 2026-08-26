@@ -147,6 +147,11 @@
         return;
       }
       if (!nodes.length) {
+        if (App.tool === 'frame') {
+          el.innerHTML = this.framePresetsPanel();
+          this.bindFramePresets(el);
+          return;
+        }
         el.innerHTML = `
           <div class="ph big">
             <div class="ph-icon">${Ico('move',{size:24})}</div>
@@ -164,6 +169,7 @@
       const multi = nodes.length > 1;
       const inAL = n.parent && App.page.nodes[n.parent] && App.page.nodes[n.parent].al;
       const parts = [];
+      const prototypeParts = [];
 
       // ---- path / node editor (spec §6) — shown while the Pen tool is in edit mode
       if (App.pen && App.pen.kind === 'edit' && App.pen.node) parts.push(this.penSection());
@@ -214,7 +220,7 @@
       // ---- constraints (children of manual-layout frames) + resize-to-fit
       if (n.parent && !multi) parts.push(this.constraintsSection(n));
       // ---- interactions (prototyping)
-      if (!multi && n.type !== 'text') parts.push(this.interactionsSection(n));
+      if (!multi && n.type !== 'text') prototypeParts.push(this.interactionsSection(n));
       // ---- layout grid
       if ((n.type === 'frame' || n.type === 'instance') && !multi) parts.push(this.gridSection(n));
       // ---- mask
@@ -234,8 +240,38 @@
           </div>
         </section>`);
 
-      el.innerHTML = parts.join('');
+      const activeTab = this._inspectorTab || 'design';
+      const tabs = `<div class="ins-tabs" role="tablist" aria-label="Inspector mode">
+        <button role="tab" data-ins-tab="design" class="${activeTab === 'design' ? 'active' : ''}">Design</button>
+        <button role="tab" data-ins-tab="prototype" class="${activeTab === 'prototype' ? 'active' : ''}">Prototype</button>
+        <button role="tab" data-ins-tab="inspect" class="${activeTab === 'inspect' ? 'active' : ''}">Inspect</button>
+      </div>`;
+      let content = parts.join('');
+      if (activeTab === 'prototype') content = prototypeParts.join('') || `<div class="ph big"><h3>Prototype</h3><p>Select one non-text layer to add an interaction.</p></div>`;
+      if (activeTab === 'inspect') content = this.devCodeView(n);
+      el.innerHTML = tabs + `<div class="ins-tab-content">${content}</div>`;
+      el.querySelectorAll('[data-ins-tab]').forEach(b => b.addEventListener('click', () => {
+        this._inspectorTab = b.dataset.insTab;
+        this.refreshInspector();
+      }));
       this.bindInspector(el, nodes);
+    },
+
+    framePresetsPanel() {
+      const presets=[['Phone','393 × 852',393,852],['Android','360 × 800',360,800],['Tablet','768 × 1024',768,1024],['Desktop','1440 × 1024',1440,1024],['Presentation','1920 × 1080',1920,1080],['Square social','1080 × 1080',1080,1080]];
+      return `<div class="ins-tabs"><button class="active">Frame presets</button></div><section class="ins-sec"><div class="ins-head"><span>Create frame</span></div><div class="pf-preset-list">${presets.map(p=>`<button class="ed-btn" data-frame-preset="${p[2]},${p[3]}" data-frame-name="${p[0]}"><span>${p[0]}</span><small>${p[1]}</small></button>`).join('')}</div><div class="ph sm">Choose a preset or drag anywhere on the canvas.</div></section>`;
+    },
+    bindFramePresets(el) {
+      el.querySelectorAll('[data-frame-preset]').forEach(b=>b.addEventListener('click',()=>{
+        const [w,h]=b.dataset.framePreset.split(',').map(Number);
+        const r=App.canvas.getBoundingClientRect();
+        const c=App.toWorld({clientX:r.left+r.width/2,clientY:r.top+r.height/2});
+        App.history.begin(App.doc);
+        const n=M.makeNode('frame',{x:c.x-w/2,y:c.y-h/2,w,h,name:b.dataset.frameName});
+        M.attach(App.doc,App.page,null,n);
+        App.history.end(App.doc);
+        App.setSel([n.id]); App.setTool('move'); App.zoomToSelection();
+      }));
     },
 
     fillsSection(n, multi) {
@@ -925,6 +961,23 @@
       const doc = App.doc;
       const commit = (fn) => { App.history.begin(doc); fn(); App.history.end(doc); App.markDirty(); };
 
+      // Precision stepping for every numeric inspector field.
+      // Arrow = normal step, Shift = 10×, Alt = 0.1×.
+      el.querySelectorAll('input[type="number"]').forEach(inp => inp.addEventListener('keydown', e => {
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        e.preventDefault();
+        const base = parseFloat(inp.step) || 1;
+        const factor = e.shiftKey ? 10 : (e.altKey ? .1 : 1);
+        const dir = e.key === 'ArrowUp' ? 1 : -1;
+        const current = parseFloat(inp.value) || 0;
+        const min = inp.min === '' ? -Infinity : parseFloat(inp.min);
+        const max = inp.max === '' ? Infinity : parseFloat(inp.max);
+        const next = Math.min(max, Math.max(min, current + base * factor * dir));
+        inp.value = String(Math.round(next * 1000) / 1000);
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+      }));
+
       // numbers x/y/w/h
       el.querySelectorAll('input[data-xy]').forEach(inp => inp.addEventListener('input', () => {
         const v = parseFloat(inp.value);
@@ -1245,7 +1298,9 @@
       el.querySelectorAll('[data-talign]').forEach(b => b.addEventListener('click', () => commit(() => { n.text.align = b.dataset.talign; P.refreshInspector(); })));
       el.querySelectorAll('[data-tvalign]').forEach(b => b.addEventListener('click', () => commit(() => { n.text.valign = b.dataset.tvalign; P.refreshInspector(); })));
       const et = el.querySelector('[data-act="edit-text"]');
-      if (et) et.addEventListener('click', () => App.beginTextEdit(n));
+      if (et) et.addEventListener('click', () => {
+        requestAnimationFrame(() => setTimeout(() => App.beginTextEdit(n), 16));
+      });
       // z-order / misc
       const z = (fn) => commit(() => { for (const x of nodes) { if (x.parent || page.tops.includes(x.id)) fn(x); } });
       const zb = el.querySelector('[data-act="z-front"]'); if (zb) zb.addEventListener('click', () => z(x => M.reorderTo(page, x, 'front')));
@@ -1775,7 +1830,7 @@
         if (c === 'lock') { App.history.begin(doc); selNodes.forEach(k => k.locked = !n.locked); App.history.end(doc); }
         if (c === 'hide' || c === 'show') { App.history.begin(doc); selNodes.forEach(k => k.visible = c === 'show'); App.history.end(doc); }
         if (c === 'rename') { const nm = prompt('Rename', n.name); if (nm) { App.history.begin(doc); n.name = nm; App.history.end(doc); } }
-        if (c === 'edit') App.beginTextEdit(n);
+        if (c === 'edit') { requestAnimationFrame(() => setTimeout(() => App.beginTextEdit(n), 16)); }
         if (c === 'del') App.deleteSel();
         if (c && c.startsWith('al-')) {
           const kind = { 'al-left': 'left', 'al-hc': 'hcenter', 'al-right': 'right', 'al-top': 'top', 'al-vc': 'vcenter', 'al-bottom': 'bottom' }[c];

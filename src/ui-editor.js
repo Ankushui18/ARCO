@@ -102,6 +102,38 @@
       requestAnimationFrame(() => {
         this._rafPending = false;
         if (!this.doc || document.getElementById('view-editor').style.display === 'none') return;
+        // During active text editing, do NOT run a full layout pass — that
+        // could re-position the text box (textarea is DOM-sibling of canvas,
+        // but relayout + full repaint at the wrong moment can cause the
+        // browser to yank focus on some configurations). Just do a light
+        // redraw so the canvas catches up visually; full layout runs when
+        // endTextEdit commit calls markDirty again.
+        if (this._textEdit) {
+          try { this._redrawLight(); } catch (e) {}
+          return;
+        }
+        // During an active drag (move/resize/rotate/create/pencil/pen) skip
+        // the full layout pass + panel refresh + collab broadcast on every
+        // frame — geometry is already being mutated in-place by the drag
+        // handlers; run a fast light redraw instead. The full pipeline runs
+        // on drag end in onUp.
+        const dragging = this._drag && /^(move|resize|rotate|rotate-multi|create|pencil|pen-new|pen-node|pen-handle|marquee)$/.test(this._drag.kind);
+        if (dragging) {
+          // For drag we still need world geometry up to date because
+          // selection/resize/rotate use _wc/_wt. But we do NOT need to
+          // re-run the auto-layout engine because:
+          //  - move: manual move, no layout ownership
+          //  - resize: size changes only; if parent is AL, we promoted the
+          //    child to fixed so layout won't move it; applyConstraints
+          //    runs on drag end.
+          //  - rotate: only rotation changes; layout doesn't care.
+          // Recompute world transforms only (cheap).
+          const W = global.World;
+          if (W && W.computePage) W.computePage(this.page);
+          this.redraw();
+          if (this.dirty) this.dirty = false;
+          return;
+        }
         this.layoutDoc(this.doc, this.page);
         this.redraw();
         this.renderPins();
@@ -120,6 +152,7 @@
       const rect = c.getBoundingClientRect();
       const v = this.view;
       R.drawPage(ctx, this.page, this.doc, { zoom: v.zoom, ox: v.ox, oy: v.oy, w: rect.width, h: rect.height, grid: v.grid, pixelPreview: v.pixelPreview, canvasColor: v.canvasColor });
+      if (this.hoverId && !this.sel.includes(this.hoverId)) R.drawHover(ctx, this.view, this.page.nodes[this.hoverId]);
       // Always draw proper Figma-style selection chrome (OBB, 4 corners,
       // hover-gated rotate dot, size pill). Dev mode adds distance labels
       // on TOP of it — never replaces it.
@@ -159,7 +192,8 @@
       const docName = M.esc ? M.esc(this.doc.name) : esc(this.doc.name);
       ed.innerHTML = `
       <div class="ed-top">
-        <button id="ed-back" class="ed-iconbtn" title="Back to files (Esc)">${Ico('chevron_l',{size:16})}</button>
+        <button id="ed-back" class="ed-iconbtn" title="Back to files">${Ico('back',{size:16})}</button>
+        <div class="ed-brand" title="Penfig Studio — local-first design workspace"><span class="ed-brand-mark">P</span><span>Penfig</span></div>
         <div class="ed-filename-wrap">
           <input id="ed-filename" class="ed-filename" value="${docName}" spellcheck="false">
           <span class="ed-pagename" id="ed-pagename" title="Double-click to rename page"></span>
@@ -167,34 +201,32 @@
         <div class="ed-top-divider"></div>
         <button id="ed-undo" class="ed-iconbtn" title="Undo (⌘Z)">${Ico('undo',{size:16})}</button>
         <button id="ed-redo" class="ed-iconbtn" title="Redo (⇧⌘Z)">${Ico('redo',{size:16})}</button>
-        <div class="ed-top-divider"></div>
-        <div class="ed-top-mid" id="ed-modes-wrap">
+        <div class="ed-top-center" id="ed-modes-wrap">
           <div class="seg" id="ed-modes"></div>
         </div>
         <div class="ed-top-right">
-          <button id="ed-rulers" class="ed-iconbtn" title="Toggle rulers" aria-label="Rulers">${Ico('ruler',{size:16})}</button>
-          <button id="ed-grid" class="ed-iconbtn" title="Toggle grid" aria-label="Grid">${Ico('grid',{size:14})}</button>
-          <button id="ed-snap" class="ed-iconbtn" title="Toggle snap to objects" aria-label="Snap">${Ico('magnet',{size:16})}</button>
-          <button id="ed-view" class="ed-iconbtn" title="View options" aria-label="View">${Ico('eye',{size:15})}</button>
+          <button id="ed-command" class="ed-command-trigger" title="Quick actions (⌘/)">${Ico('search',{size:13})}<span>Quick actions</span><kbd>⌘ /</kbd></button>
+          <button id="ed-view" class="ed-iconbtn" title="View options">${Ico('eye',{size:15})}</button>
+          <button id="ed-versions" class="ed-iconbtn" title="Version history">${Ico('history',{size:14})}</button>
+          <button id="ed-plugins" class="ed-iconbtn" title="Plugins">${Ico('plugin',{size:14})}</button>
+          <button id="ed-focus" class="ed-iconbtn" title="Focus canvas — hide panels (⇧F)">${Ico('zoomfit',{size:14})}</button>
+          <button id="ed-dev" class="ed-btn" title="Developer mode (D)">${Ico('code',{size:13})} Dev</button>
+          <button id="ed-present" class="ed-btn" title="Present prototype (⇧K)">${Ico('play',{size:13})} Present</button>
           <div class="ed-top-divider"></div>
-          <button id="ed-present" class="ed-btn" title="Present prototype (⇧K)">${Ico('play',{size:12})} Present</button>
-          <button id="ed-devmode" class="ed-btn" title="Dev mode (D) — inspect + code">${Ico('dev',{size:14})} Inspect</button>
-          <button id="ed-versions" class="ed-btn" title="Version history (⌘K)">${Ico('history',{size:14})}</button>
-          <button id="ed-plugins" class="ed-btn" title="Plugins">${Ico('plugin',{size:14})}</button>
-          <button id="ed-share" class="ed-btn" title="Share / save">${Ico('save',{size:13})} Save</button>
-          <div class="ed-top-divider"></div>
+          <span class="ed-local-state" title="Your working file stays on this device">${Ico('check',{size:11})} Local</span>
+          <button id="ed-help" class="ed-iconbtn" title="Help and shortcuts">?</button>
+          <button id="ed-share" class="ed-btn ed-btn-primary" title="Save locally in this browser (⌘S)">${Ico('save',{size:13})} Save locally</button>
+          <button id="ed-export" class="ed-btn" title="Export (⌘E)">${Ico('download',{size:13})} Export</button>
           <span id="ed-peers" class="ed-peers" title="People in this file"></span>
-          <button id="ed-export" class="ed-btn active" title="Export (⌘E)">${Ico('download',{size:13})} Export</button>
         </div>
       </div>
       <div class="ed-body">
         <div class="ed-left">
           <div class="ed-left-tabs">
-            <button class="ed-ltab active" data-tab="layers" title="Layers">${Ico('layers',{size:13})}<span>Layers</span></button>
+            <button class="ed-ltab active" data-tab="layers" title="Layers">${Ico('layers',{size:14})}<span>Layers</span></button>
             <button class="ed-ltab" data-tab="assets" title="Assets">${Ico('component',{size:14})}<span>Assets</span></button>
-            <button class="ed-ltab" data-tab="styles" title="Styles">${Ico('styles',{size:14})}<span>Styles</span></button>
-            <button class="ed-ltab" data-tab="pages" title="Pages">${Ico('pages',{size:13})}<span>Pages</span></button>
-            <button class="ed-ltab" data-tab="vars" title="Variables / tokens">${Ico('tokens',{size:13})}<span>Tokens</span></button>
+            <button class="ed-ltab" data-tab="pages" title="Pages">${Ico('pages',{size:14})}<span>Pages</span></button>
+            <button class="ed-ltab" data-tab="vars" title="Variables">${Ico('tokens',{size:14})}<span>Variables</span></button>
           </div>
           <div class="ed-left-content">
             <div id="ed-layers" class="ed-panel-body"></div>
@@ -209,30 +241,30 @@
           <div class="ed-pins" id="ed-pins"></div>
           <div class="ed-toolbar" id="ed-toolbar">
             ${Icons.toolBtn('move','move','Move','V')}
+            ${Icons.toolBtn('scale','scale','Scale','K')}
             ${Icons.toolBtn('frame','frame','Frame','F')}
             ${Icons.toolBtn('section','section','Section','S')}
             <div class="tb-sep"></div>
             ${Icons.toolBtn('rect','rect','Rectangle','R')}
             ${Icons.toolBtn('ellipse','ellipse','Ellipse','O')}
+            ${Icons.toolBtn('polygon','polygon','Polygon','')}
+            ${Icons.toolBtn('star','star','Star','')}
+            ${Icons.toolBtn('triangle','triangle','Triangle','')}
             ${Icons.toolBtn('line','line','Line','L')}
             ${Icons.toolBtn('arrow','arrow','Arrow','A')}
             <div class="tb-sep"></div>
-            ${Icons.toolBtn('pen','pen','Pen (vector)','P')}
+            ${Icons.toolBtn('pen','pen','Pen','P')}
             ${Icons.toolBtn('pencil','pencil','Pencil','N')}
-            ${Icons.toolBtn('polygon','polygon','Polygon')}
-            ${Icons.toolBtn('star','star','Star')}
-            ${Icons.toolBtn('triangle','triangle','Triangle')}
             <div class="tb-sep"></div>
             ${Icons.toolBtn('text','text','Text','T')}
+            ${Icons.toolBtn('hand','hand','Hand','H')}
             ${Icons.toolBtn('comment','comment','Comment','C')}
-            <div class="tb-sep"></div>
-            ${Icons.toolBtn('hand','hand','Hand / pan','H')}
           </div>
           <div class="ed-zoom" id="ed-zoom">
             <button id="zoom-out" title="Zoom out">${Ico('minus',{size:14})}</button>
             <button id="zoom-pct" title="Zoom to 100%">100%</button>
             <button id="zoom-in" title="Zoom in">${Ico('plus',{size:14})}</button>
-            <button id="zoom-fit" title="Zoom to fit (⇧1)">${Ico('zoomfit',{size:14})}</button>
+            <button id="zoom-fit" title="Zoom to fit">${Ico('zoomfit',{size:14})}</button>
           </div>
           <div class="ed-status" id="ed-status"></div>
         </div>
@@ -250,7 +282,10 @@
         ed.querySelectorAll('.ed-ltab').forEach(x => x.classList.remove('active'));
         b.classList.add('active');
         const tab = b.dataset.tab;
-        ['layers', 'assets', 'styles', 'pages', 'vars'].forEach(t => ed.querySelector('#ed-' + t).style.display = t === tab ? '' : 'none');
+        ['layers', 'assets', 'styles', 'pages', 'vars'].forEach(t => {
+          const el = ed.querySelector('#ed-' + t);
+          if (el) el.style.display = t === tab ? '' : 'none';
+        });
         if (tab === 'layers') global.Panels.refreshLayers();
         if (tab === 'assets') global.Panels.renderAssets();
         if (tab === 'styles') global.Panels.renderStyles();
@@ -263,17 +298,22 @@
       ed.querySelector('#zoom-pct').addEventListener('click', () => { const c = centerOf(this.canvas); this.zoomAt(c.x, c.y, 1 / this.view.zoom); });
       ed.querySelector('#zoom-fit').addEventListener('click', () => this.zoomToFit());
       ed.querySelector('#ed-export').addEventListener('click', (e) => { e.stopPropagation(); global.Panels.exportMenu(e.clientX, e.clientY); });
-      ed.querySelector('#ed-present').addEventListener('click', () => this.startPresent());
-      ed.querySelector('#ed-devmode').addEventListener('click', () => this.toggleDevMode());
+      ed.querySelector('#ed-command')?.addEventListener('click', () => this.commandPalette());
       ed.querySelector('#ed-view')?.addEventListener?.('click', (e) => { e.stopPropagation(); global.Panels.viewMenu(e.clientX, e.clientY); });
       ed.querySelector('#ed-undo').addEventListener('click', () => this.historyUndo());
       ed.querySelector('#ed-redo').addEventListener('click', () => this.historyRedo());
-      ed.querySelector('#ed-rulers').addEventListener('click', () => { this.view.rulers = !this.view.rulers; this.syncViewToggles(); this.markDirty(); });
-      ed.querySelector('#ed-grid').addEventListener('click', () => { this.view.grid = this.view.grid ? null : (this.view.gridSize || 10); this.syncViewToggles(); this.markDirty(); });
-      ed.querySelector('#ed-snap').addEventListener('click', () => { this.view.snap = !this.view.snap; this.syncViewToggles(); this.markDirty(); });
       ed.querySelector('#ed-share').addEventListener('click', () => { this.saveNow(); this.toast('Saved to this browser', 2000, 'success'); });
-      ed.querySelector('#ed-versions').addEventListener('click', (e) => { e.stopPropagation(); global.Panels.versionsMenu(e.clientX, e.clientY); });
-      ed.querySelector('#ed-plugins').addEventListener('click', (e) => { e.stopPropagation(); global.Panels.pluginsModal(); });
+      ed.querySelector('#ed-versions')?.addEventListener('click', (e) => { e.stopPropagation(); global.Panels.versionsMenu(e.clientX, e.clientY); });
+      ed.querySelector('#ed-plugins')?.addEventListener('click', (e) => { e.stopPropagation(); global.Panels.pluginsModal(); });
+      ed.querySelector('#ed-help')?.addEventListener('click', () => this.showWelcome(true));
+      ed.querySelector('#ed-present')?.addEventListener('click', () => this.startPresent());
+      ed.querySelector('#ed-dev')?.addEventListener('click', () => this.toggleDevMode());
+      ed.querySelector('#ed-focus')?.addEventListener('click', () => {
+        const focused = ed.classList.toggle('focus-canvas');
+        ed.querySelector('#ed-focus').classList.toggle('active', focused);
+        ed.querySelector('#ed-focus').title = focused ? 'Show panels' : 'Focus canvas — hide panels';
+        requestAnimationFrame(() => { this.resizeCanvas(); this.markDirty(); });
+      });
       this.setTool('move');
       // syncViewToggles sets the canvas-wrap background to match canvasColor.
       // Canvas element is added synchronously by buildChrome, so run next frame.
@@ -284,12 +324,39 @@
       this.renderModes();
       this.updateZoomLabel();
       this.renderPagename();
+      requestAnimationFrame(() => this.showWelcome(false));
       // double-click page name → rename
       const pn = ed.querySelector('#ed-pagename');
       if (pn) pn.addEventListener('dblclick', () => {
         const name = prompt('Rename page', this.page.name);
         if (name && name.trim()) { this.page.name = name.trim(); this.renderPagename(); global.Panels.renderPages(); this.markDirty(); }
       });
+    },
+    showWelcome(force) {
+      const key = 'penfig.welcome.v3';
+      if (!force && localStorage.getItem(key)) return;
+      document.querySelector('.studio-welcome')?.remove();
+      const wrap = document.createElement('div');
+      wrap.className = 'studio-welcome';
+      wrap.innerHTML = `<div class="studio-welcome-card">
+        <button class="studio-welcome-x" aria-label="Close">×</button>
+        <span class="studio-kicker">LOCAL-FIRST DESIGN</span>
+        <h2>Welcome to Penfig Studio</h2>
+        <p>Your files stay on this device. Draw, prototype, inspect and export without an account.</p>
+        <div class="studio-start-grid">
+          <button data-tool="move"><kbd>V</kbd><span><b>Select</b><small>Pick and transform layers</small></span></button>
+          <button data-tool="frame"><kbd>F</kbd><span><b>Frame</b><small>Create screens and containers</small></span></button>
+          <button data-tool="rect"><kbd>R</kbd><span><b>Shape</b><small>Draw interface elements</small></span></button>
+          <button data-tool="text"><kbd>T</kbd><span><b>Text</b><small>Click anywhere and type</small></span></button>
+        </div>
+        <div class="studio-welcome-foot"><span>Space + drag to pan · ⌘/ for Quick Actions</span><button class="studio-go">Start designing</button></div>
+      </div>`;
+      document.body.appendChild(wrap);
+      const close = () => { localStorage.setItem(key, '1'); wrap.remove(); };
+      wrap.querySelector('.studio-welcome-x').onclick = close;
+      wrap.querySelector('.studio-go').onclick = close;
+      wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+      wrap.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => { this.setTool(b.dataset.tool); close(); });
     },
     renderPagename() {
       const el = document.getElementById('ed-pagename');
@@ -440,7 +507,14 @@
           move: (e) => self.onMove(e),
           up: (e) => self.onUp(e),
           keydown: (e) => self.onKey(e),
-          keyup: (e) => { if (e.code === 'Space') self.space = false; },
+          keyup: (e) => {
+            // Ignore Space keyup when typing in an input/textarea (otherwise
+            // pressing space while editing text briefly toggles hand-tool
+            // cursor and pans the canvas when released).
+            const t = e.target;
+            if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName || '')) return;
+            if (e.code === 'Space') self.space = false;
+          },
         };
         window.addEventListener('pointermove', this._winHandlers.move);
         window.addEventListener('pointerup', this._winHandlers.up);
@@ -531,10 +605,71 @@
       M.store.put(entry);
       this.openFile(doc.id);
       if (kind === 'fig' && report) {
-        this.toast(`Imported .fig — ${report.nodes||0} nodes, ${report.pages||0} page(s), ${report.tokens||0} tokens, ${report.images||0} image(s)` + (report.warnings && report.warnings.length ? ` · ${report.warnings.length} note(s)` : ''), 6000, 'success');
+        // Collect missing/unavailable fonts.
+        const fontSet = new Set();
+        for (const p of doc.pages) for (const id in p.nodes) {
+          const n = p.nodes[id];
+          if (n && n.type === 'text' && n.text && n.text.font) fontSet.add(n.text.font);
+        }
+        const available = new Set(global.Fonts.SYSTEM_FONTS);
+        global.Fonts.GOOGLE_FONTS.forEach(g => available.add(g.name));
+        global.Fonts.localFonts().forEach(f => available.add(f));
+        const missing = Array.from(fontSet).filter(f => !available.has(f));
+        report.missingFonts = missing;
+        this._showImportSummary(doc.name, report);
       } else {
         this.toast('Opened ' + doc.name, 2500, 'success');
       }
+    },
+    _showImportSummary(docName, r) {
+      r = r || {};
+      let el = document.getElementById('ed-import-summary');
+      if (el) el.remove();
+      el = document.createElement('div');
+      el.id = 'ed-import-summary';
+      el.className = 'ed-modal-backdrop';
+      const rows = [
+        ['Nodes',     r.nodes     || 0],
+        ['Pages',     r.pages     || 0],
+        ['Tokens',    r.tokens    || 0],
+        ['Images',    r.images    || 0],
+        ['Components',r.components|| 0],
+      ];
+      const warnCount = (r.warnings ? r.warnings.length : 0);
+      const missFonts = r.missingFonts || [];
+      const rowsHtml = rows.map(([k,v]) => `<div class="pf-sum-row"><span>${k}</span><b>${v}</b></div>`).join('');
+      const fontsHtml = missFonts.length ?
+        `<div class="pf-sum-warn">
+          <div class="pf-sum-warn-head">${global.Icons.svg('warn',{size:14})}<span>${missFonts.length} missing font${missFonts.length===1?'':'s'}</span></div>
+          <div class="pf-sum-fonts">${missFonts.slice(0,8).map(f=>`<span class="pf-sum-chip" title="${global.Dash.esc(f)}">${global.Dash.esc(f)}</span>`).join('')}${missFonts.length>8?`<span class="pf-sum-more">+${missFonts.length-8} more</span>`:''}</div>
+          <button class="pf-sum-btn" id="pf-sum-loadfonts">Try loading from Google Fonts</button>
+        </div>` : '';
+      const warnHtml = warnCount ?
+        `<div class="pf-sum-warn">
+          <div class="pf-sum-warn-head">${global.Icons.svg('info',{size:14})}<span>${warnCount} compatibility note${warnCount===1?'':'s'}</span></div>
+          <ul class="pf-sum-notes">${(r.warnings||[]).slice(0,6).map(w=>`<li>${global.Dash.esc(String(w))}</li>`).join('')}${warnCount>6?`<li>…and ${warnCount-6} more</li>`:''}</ul>
+        </div>` : '';
+      el.innerHTML =
+        `<div class="ed-import-dialog" style="width:420px">
+          <div class="ed-import-title">${global.Icons.svg('check_circle',{size:18})}<span class="ed-import-fname">Imported "${global.Dash.esc(docName)}"</span></div>
+          <div class="pf-sum-grid">${rowsHtml}</div>
+          ${fontsHtml}
+          ${warnHtml}
+          <button class="ed-import-cancel" id="pf-sum-close" style="float:none;width:100%;margin-top:8px;background:#0d99ff;color:#fff;border-color:#0d99ff;">Open file</button>
+        </div>`;
+      const ve = document.getElementById('view-editor') || document.body;
+      ve.appendChild(el);
+      const close = () => { el.remove(); };
+      el.querySelector('#pf-sum-close').addEventListener('click', close);
+      el.addEventListener('click', (ev) => { if (ev.target === el) close(); });
+      const loadBtn = el.querySelector('#pf-sum-loadfonts');
+      if (loadBtn) loadBtn.addEventListener('click', () => {
+        loadBtn.disabled = true; loadBtn.textContent = 'Loading…';
+        Promise.all(missFonts.map(f => global.Fonts.ensureLoaded(f))).then(() => {
+          loadBtn.textContent = 'Done'; this.markDirty();
+          setTimeout(close, 600);
+        });
+      });
     },
     // ---- Async worker-based import (off-main-thread for large files) ----
     _importWorker: null,
@@ -778,6 +913,52 @@
           const pad = Math.max(4, (n.stroke && n.stroke.width) || 1) / this.view.zoom;
           return Math.abs(ly - h/2) <= pad && lx >= -pad && lx <= w + pad;
         }
+        if (n.type === 'vector') {
+          // Vector hit testing using Path2D.isPointInPath (fill) +
+          // isPointInStroke (stroke). Falls back to bbox test when
+          // Path2D is unavailable or the path is invalid.
+          const d = n.path;
+          if (d && typeof Path2D !== 'undefined') {
+            try {
+              const p = new Path2D(d);
+              const pw = n.pathW || w, ph = n.pathH || h;
+              // Transform local hit point to path-local space (inverse of
+              // the scale(w/pw, h/ph) the renderer applies).
+              const plx = pw > 0 ? lx * pw / w : lx;
+              const ply = ph > 0 ? ly * ph / h : ly;
+              const rule = n.windingRule === 'evenodd' ? 'evenodd' : 'nonzero';
+              const fill = (n.fills || []).some(f => f && f.visible !== false && f.type !== 'none');
+              const hasStroke = n.stroke && n.stroke.visible && n.stroke.width > 0;
+              if (fill) {
+                // We need a throwaway context for isPointInPath.
+                if (!this._hitCtx) this._hitCtx = document.createElement('canvas').getContext('2d');
+                this._hitCtx.save();
+                if (hasStroke) {
+                  this._hitCtx.lineWidth = (n.stroke.width || 1);
+                  this._hitCtx.lineCap = n.stroke.cap || 'butt';
+                  this._hitCtx.lineJoin = n.stroke.join || 'miter';
+                  this._hitCtx.miterLimit = n.stroke.miter || 10;
+                }
+                const inFill = this._hitCtx.isPointInPath(p, plx, ply, rule);
+                const inStroke = hasStroke ? this._hitCtx.isPointInStroke(p, plx, ply) : false;
+                this._hitCtx.restore();
+                if (inFill || inStroke) return true;
+              } else if (hasStroke) {
+                if (!this._hitCtx) this._hitCtx = document.createElement('canvas').getContext('2d');
+                this._hitCtx.save();
+                this._hitCtx.lineWidth = (n.stroke.width || 1);
+                this._hitCtx.lineCap = n.stroke.cap || 'butt';
+                this._hitCtx.lineJoin = n.stroke.join || 'miter';
+                this._hitCtx.miterLimit = n.stroke.miter || 10;
+                const inStroke = this._hitCtx.isPointInStroke(p, plx, ply);
+                this._hitCtx.restore();
+                if (inStroke) return true;
+              }
+              return false;
+            } catch (e) { /* fall through to bbox */ }
+          }
+          return true;
+        }
         return true;
       };
       const visit = (n) => {
@@ -861,6 +1042,10 @@
       const p = this.toWorld(e);
       const self = this;
 
+      const now = Date.now();
+      // Reset click stamp if pointer moved far or too long passed.
+      if (this._lastClick && (now - this._lastClick.t) > 600) this._lastClick = null;
+
       if (this.tool === 'comment') {
         const text = prompt('Add a comment:', '');
         if (text) {
@@ -882,7 +1067,7 @@
         this._drag = { kind: 'pencil' };
         return;
       }
-      if (this.tool !== 'move') {
+      if (this.tool !== 'move' && this.tool !== 'scale') {
         // create shapes
         const spec =
           this.tool === 'frame' ? { type: 'frame' } :
@@ -895,14 +1080,24 @@
           this.tool === 'star' ? { type: 'vector', shape: 'star', verts: 5 } :
           this.tool === 'triangle' ? { type: 'vector', shape: 'triangle', verts: 3 } : null;
         if (this.tool === 'text') {
+          e.preventDefault();
           this.history.begin(this.doc);
-          const t = M.makeNode('text', { x: p.x, y: p.y - 12, w: 120, h: 24 });
+          const defaultSize = 16;
+          const t = M.makeNode('text', { x: p.x, y: p.y - defaultSize * 0.2, w: 120, h: defaultSize * 1.3 });
           M.attach(this.doc, this.page, null, t);
           this.applyTextResize(t); // Figma: new text hugs its content (auto w+h)
           this.history.end(this.doc);
           this.setSel([t.id]);
           this.setTool('move');
-          this.beginTextEdit(t);
+          // Cancel any stale drag from previous interaction so the deferred
+          // beginTextEdit doesn't fight canvas pointer logic.
+          this._drag = null;
+          this._snapGuides = null;
+          // Defer beginTextEdit until AFTER the pointerdown/pointerup/click
+          // event sequence fully completes. Browsers reject programmatic
+          // .focus() calls made from inside a pointer gesture — focus only
+          // works once the event loop has gone idle past pointerup.
+          requestAnimationFrame(() => setTimeout(() => this.beginTextEdit(t), 16));
           return;
         }
         if (!spec) return;
@@ -946,7 +1141,9 @@
             startLocalCx: n.x + n.w/2, startLocalCy: n.y + n.h/2,
             startWt: n._wt ? n._wt.slice() : null,
             sp: { x: e.clientX - crect.left, y: e.clientY - crect.top },
-            ox: this.view.ox, oy: this.view.oy
+            ox: this.view.ox, oy: this.view.oy,
+            scaleMode: this.tool === 'scale',
+            scaleSnapshot: this.tool === 'scale' ? this.captureScaleTree(n) : null
           };
         }
         return;
@@ -960,14 +1157,32 @@
           this.setSel(this.sel.slice());
           return;
         }
-        if (!this.sel.includes(hit.id)) this.setSel([hit.id]);
+        const alreadySelected = this.sel.length === 1 && this.sel[0] === hit.id;
+        // Click-click (slower than dblclick, but same intent) → edit text.
+        // Fast double-clicks are handled by onDbl() — that's the primary path.
+        if (hit.type === 'text' && alreadySelected) {
+          const prev = this._lastClick;
+          if (prev && prev.id === hit.id && (now - prev.t) < 600) {
+            this._lastClick = null;
+            this._drag = null;
+            e.preventDefault();
+            this.setSel([hit.id]);
+            // Defer past pointerdown event tail (same rationale as T-tool).
+            requestAnimationFrame(() => setTimeout(() => this.beginTextEdit(hit), 20));
+            return;
+          }
+        }
+        this._lastClick = { t: now, id: hit.id };
+        if (!alreadySelected) this.setSel([hit.id]);
         const page = this.page;
         const starts = this.sel.map(id => { const n = page.nodes[id]; return n ? { id, x: n.x, y: n.y } : null; }).filter(Boolean);
-        this._drag = { kind: 'move', starts, sx: p.x, sy: p.y, moved: false };
+        // Record pending drag; movement threshold in onMove decides if we really drag.
+        // This is critical: without a threshold, a sub-pixel jitter during a double-click
+        // starts a move drag and eats the second click.
+        this._drag = { kind: 'pending-move', starts, sx: p.x, sy: p.y, moved: false, hit };
       } else {
         if (!e.shiftKey) { this.setSel([]); }
-        this._drag = { kind: 'marquee', sx: p.x, sy: p.y, base: e.shiftKey ? this.sel.slice() : [] };
-        this.markDirty();
+        this._drag = { kind: 'pending-marquee', sx: p.x, sy: p.y, base: e.shiftKey ? this.sel.slice() : [] };
       }
     },
     onMove(e) {
@@ -979,6 +1194,26 @@
       }
       // Active drag: update cursor to "grabbing" / "crosshair" appropriately
       if (d) {
+        // Movement threshold before we commit to a drag (lets clicks/double-clicks fire cleanly)
+        const MOVE_THRESH = 3 / this.view.zoom;
+        if (d.kind === 'pending-move') {
+          const p2 = this.toWorld(e);
+          if (Math.hypot(p2.x - d.sx, p2.y - d.sy) > MOVE_THRESH) {
+            d.kind = 'move';
+            d.moved = true;
+            this.history.begin(this.doc);
+          } else {
+            return;
+          }
+        } else if (d.kind === 'pending-marquee') {
+          const p2 = this.toWorld(e);
+          if (Math.hypot(p2.x - d.sx, p2.y - d.sy) > MOVE_THRESH) {
+            d.kind = 'marquee';
+            this.markDirty();
+          } else {
+            return;
+          }
+        }
         if (d.kind === 'pan') c.style.cursor = 'grabbing';
         else if (d.kind === 'rotate' || d.kind === 'rotate-multi') c.style.cursor = 'grabbing';
       }
@@ -992,9 +1227,16 @@
         const isHover = this._updateRotateHover(mx, my);
         const h = this.handleAt(e);
         if (h) c.style.cursor = cursorFor(h.name);
-        else if (this.tool !== 'move') c.style.cursor = this.tool === 'text' ? 'text' : 'crosshair';
+        else if (this.tool !== 'move' && this.tool !== 'scale') c.style.cursor = this.tool === 'text' ? 'text' : 'crosshair';
         else if (this.space) c.style.cursor = 'grab';
-        else c.style.cursor = this.hitTest(this.toWorld(e)) ? 'default' : 'default';
+        else {
+          const hit = this.hitTest(this.toWorld(e));
+          const nextHover = hit ? hit.id : null;
+          if (nextHover !== this.hoverId) { this.hoverId = nextHover; this._redrawLight(); }
+          // I-beam cursor over text nodes (Figma muscle memory)
+          if (hit && hit.type === 'text') c.style.cursor = 'text';
+          else c.style.cursor = hit ? 'default' : 'default';
+        }
         // Redraw if rotate hover state changed so the dot appears/disappears
         if (wasHover !== isHover) this.markDirty();
         return;
@@ -1118,16 +1360,22 @@
       // anchor is at (d._ax, d._ay) in local space; the dragged handle is
       // at (d._hx, d._hy). After resize the handle tracks lpx/lpy.
       let newW = sw, newH = sh;
-      if (movesE) newW = Math.max(4, lpx);             // E side: local x is new width (anchor at x=0)
-      else if (movesW) newW = Math.max(4, d._ax - lpx); // W side: local x negative, width = ax - lpx
+      if (movesE) newW = Math.max(1, lpx);             // E side: local x is new width (anchor at x=0)
+      else if (movesW) newW = Math.max(1, d._ax - lpx); // W side: local x negative, width = ax - lpx
       else newW = sw;
-      if (movesS) newH = Math.max(4, lpy);              // S side
-      else if (movesN) newH = Math.max(4, d._ay - lpy); // N side
+      if (movesS) newH = Math.max(1, lpy);              // S side
+      else if (movesN) newH = Math.max(1, d._ay - lpy); // N side
       else newH = sh;
+      // Guard against NaN/Infinity from a weird pointer event mid-drag.
+      if (!isFinite(newW) || newW < 1) newW = sw;
+      if (!isFinite(newH) || newH < 1) newH = sh;
 
-      if (isCorner && e.shiftKey) {
+      if (d.scaleMode || (isCorner && e.shiftKey)) {
         const ratio = sw / sh;
-        if (newW / ratio > newH) newH = newW / ratio; else newW = newH * ratio;
+        if (!isCorner && (movesE || movesW)) newH = newW / ratio;
+        else if (!isCorner && (movesN || movesS)) newW = newH * ratio;
+        else if (newW / ratio > newH) newH = newW / ratio;
+        else newW = newH * ratio;
       }
 
       // Solve for new n.x, n.y so anchor stays fixed in world space.
@@ -1147,6 +1395,10 @@
       n.x = d._anchorWorld.x - newW/2 - rx;
       n.y = d._anchorWorld.y - newH/2 - ry;
       n.w = newW; n.h = newH;
+      if (d.scaleMode && d.scaleSnapshot) {
+        const factor = sw ? newW / sw : 1;
+        this.applyScaleTree(d.scaleSnapshot, factor);
+      }
 
       // Sizing-mode transitions.
       if (n.type === 'text') {
@@ -1241,6 +1493,28 @@
           ysT.push({ val: bb.y, side: 'top', x0: bb.x, x1: bb.x + bb.w });
           ysT.push({ val: bb.y + bb.h / 2, side: 'cy', x0: bb.x, x1: bb.x + bb.w });
           ysT.push({ val: bb.y + bb.h, side: 'bottom', x0: bb.x, x1: bb.x + bb.w });
+          // Text baseline snap: add a baseline target for text nodes.
+          // Estimate baseline ≈ top + capHeight (≈ 0.72–0.8 of font size when
+          // measured from the top of the text box). Figma snaps text
+          // baselines to other baselines and to shape tops/centers.
+          if (n.type === 'text' && n.text) {
+            const fs = n.text.size || 14;
+            const lhMul = (typeof n.text.lineHeight === 'number' && n.text.lineHeight > 0) ? n.text.lineHeight : 1.2;
+            const lh = fs * lhMul;
+            const valign = n.text.valign || 'top';
+            const totalH = bb.h;
+            let baseY;
+            if (valign === 'middle') {
+              const lines = Math.max(1, Math.round(totalH / lh));
+              const firstBase = bb.y + (totalH - lines * lh) / 2 + lh * 0.82;
+              baseY = firstBase;
+            } else if (valign === 'bottom') {
+              baseY = bb.y + totalH - lh * 0.18;
+            } else {
+              baseY = bb.y + lh * 0.82;
+            }
+            ysT.push({ val: baseY, side: 'baseline', x0: bb.x, x1: bb.x + bb.w, baseline: true });
+          }
         }
         for (const cid of n.children) { const k = page.nodes[cid]; if (k) visit(k); }
       };
@@ -1260,12 +1534,22 @@
         }
         return best;
       };
+      // Determine if the moved selection includes a text node whose
+      // baseline should participate in snap matching.
+      let hasTextBase = false;
+      for (const id of excludeIds) { const n = page.nodes[id]; if (n && n.type === 'text') { hasTextBase = true; break; } }
+      // Build moving-box edges; include a baseline edge if any selected
+      // text node would contribute one. We approximate the box's own
+      // baseline the same way as the targets: top + lh*0.82 for top-aligned.
+      const yEdges = [{ val: box.y, side: 'top' }, { val: box.y + box.h / 2, side: 'cy' }, { val: box.y + box.h, side: 'bottom' }];
+      if (hasTextBase) {
+        // Use a reasonable estimate: 14px * 1.2 * 0.82 from top of box.
+        yEdges.push({ val: box.y + 14 * 1.2 * 0.82, side: 'baseline' });
+      }
       const xs = pick(
         [{ val: box.x, side: 'left' }, { val: box.x + box.w / 2, side: 'cx' }, { val: box.x + box.w, side: 'right' }],
         xsT, 'x');
-      const ys = pick(
-        [{ val: box.y, side: 'top' }, { val: box.y + box.h / 2, side: 'cy' }, { val: box.y + box.h, side: 'bottom' }],
-        ysT, 'y');
+      const ys = pick(yEdges, ysT, 'y');
       if (!xs && !ys) return null;
       const guides = [];
       if (xs) {
@@ -1297,6 +1581,17 @@
       this._drag = null;
       this._snapGuides = null; // guides only exist mid-drag
       if (!d) return;
+      // Clicks that never crossed the movement threshold — just cancel any history.
+      if (d.kind === 'pending-move' || d.kind === 'pending-marquee') {
+        this.history.cancel();
+        if (d.kind === 'pending-marquee') {
+          // click on empty space with no modifier → clear selection already done in onDown
+          this.marquee = null;
+          delete this._marqueePreview;
+        }
+        this.markDirty();
+        return;
+      }
       if (d.kind === 'create') {
         const n = d.node;
         if (n.w < 3 && n.h < 3) { n.w = n.type === 'line' ? 100 : 100; n.h = n.type === 'line' ? 1 : 100; n.x -= n.w / 2; n.y -= n.h / 2; }
@@ -1334,7 +1629,20 @@
       if (this.tool === 'pen' && this.pen) { this.penCommit(true); return; }
       const p = this.toWorld(e);
       const hit = this.hitTest(p);
-      if (hit && hit.type === 'text') { this.setSel([hit.id]); this.beginTextEdit(hit); }
+      // Cancel any in-progress click-drag state the pointerdown handler may
+      // have started so the textarea doesn't get killed by an up/move handler.
+      this._drag = null;
+      this._snapGuides = null;
+      this.marquee = null;
+      delete this._marqueePreview;
+      if (hit && hit.type === 'text') {
+        this.setSel([hit.id]);
+        this.markDirty();
+        // Defer past the entire pointer event sequence (pointerdown → dblclick
+        // → pointerup → click). Browsers will refuse programmatic .focus()
+        // while a pointer gesture is still being dispatched.
+        requestAnimationFrame(() => setTimeout(() => this.beginTextEdit(hit), 20));
+      }
       else if (hit && hit.type === 'frame') { /* zoom into frame */ const b = hit._l; this.zoomToRect(b); }
     },
 
@@ -1662,112 +1970,386 @@
     // ------------------------------------------------------------- text editing
     _textEdit: null,
     beginTextEdit(n, opts) {
-      this.endTextEdit();
+      // If already editing this exact node, do nothing. If editing a different
+      // node, commit the old one first.
+      if (this._textEdit) {
+        if (this._textEdit.n === n) return;
+        this.endTextEdit(true);
+      }
+      // Cancel any in-progress drag / marquee / pencil state so canvas
+      // pointer logic can't steal focus or fight us.
+      this._drag = null;
+      this._snapGuides = null;
+      this.marquee = null;
+      if (this._marqueePreview) delete this._marqueePreview;
+      // Ensure fresh layout + world geometry so n._w is accurate.
+      try { this.layoutDoc(this.doc, this.page); } catch (e) {}
+      if (global.World && global.World.computePage) { try { global.World.computePage(this.page); } catch (e) {} }
+
       const wrap = document.querySelector('.ed-canvas-wrap');
-      if (!wrap) return;
+      if (!wrap) { this.toast('Canvas not ready', 1200, 'error'); return; }
+
+      const z = this.view.zoom;
+      const t = n.text || (n.text = {});
+      const originalContent = t.content || '';
+      const originalRuns = Array.isArray(t.runs) ? JSON.parse(JSON.stringify(t.runs)) : null;
+      // Build world-space aabb (use _wc if present for rotated correctness, else _w)
+      let sx, sy, sw, sh;
+      if (n._wc && n._wc.length === 4) {
+        let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+        for (const p of n._wc) { x0=Math.min(x0,p.x); y0=Math.min(y0,p.y); x1=Math.max(x1,p.x); y1=Math.max(y1,p.y); }
+        sx = x0*z + this.view.ox; sy = y0*z + this.view.oy;
+        sw = (x1-x0)*z; sh = (y1-y0)*z;
+      } else {
+        const wb = n._w || { x:n.x||0, y:n.y||0, w:n.w||24, h:n.h||24 };
+        sx = wb.x*z + this.view.ox; sy = wb.y*z + this.view.oy; sw = wb.w*z; sh = wb.h*z;
+      }
+      sw = Math.max(40, sw); sh = Math.max(20, sh);
+
       const ta = document.createElement('textarea');
       ta.className = 'text-edit';
-      ta.setAttribute('spellcheck', 'false');
-      ta.setAttribute('autocomplete', 'off');
-      ta.setAttribute('autocorrect', 'off');
-      ta.setAttribute('autocapitalize', 'off');
-      ta.value = n.text.content;
-      // Position in SCREEN space using the node's WORLD bbox. Using n._w
-      // (axis-aligned world bbox) works because the canvas is screen-
-      // aligned; we position the textarea over the node's world bbox.
-      const z = this.view.zoom;
-      const wb = n._w || { x: n.x, y: n.y, w: n.w, h: n.h };
-      const sx = wb.x * z + this.view.ox;
-      const sy = wb.y * z + this.view.oy;
-      const sw = Math.max(48, wb.w * z);
-      const sh = Math.max(22, wb.h * z);
-      // Font props — mirror canvas exactly.
-      const t = n.text || {};
-      const family = t.font || 'Inter';
-      const familyCss = `"${family}", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`;
-      const pad = 1; // sub-pixel so border doesn't clip glyphs
-      Object.assign(ta.style, {
-        left: (sx - pad) + 'px', top: (sy - pad) + 'px',
-        width: (sw + pad*2) + 'px',
-        height: (sh + pad*2) + 'px',
-        fontSize: Math.round((t.size || 16) * z * 100)/100 + 'px',
-        fontWeight: t.weight || 400,
-        fontStyle: t.italic ? 'italic' : 'normal',
-        fontFamily: familyCss,
-        letterSpacing: ((t.letterSpacing || 0) * z) + 'px',
-        lineHeight: String(t.lineHeight || 1.2),
-        textAlign: t.align || 'left',
-        color: this._textFillColor(n),
-        background: 'transparent',
-        padding: pad + 'px',
-        whiteSpace: 'pre-wrap',
-        wordWrap: 'break-word',
-        overflow: 'hidden',
-        textDecoration: [
-          t.underline ? 'underline' : '',
-          t.strike ? 'line-through' : ''
-        ].filter(Boolean).join(' ') || 'none',
-      });
+      ta.setAttribute('spellcheck','false');
+      ta.setAttribute('autocomplete','off');
+      ta.setAttribute('autocorrect','off');
+      ta.setAttribute('autocapitalize','off');
+      ta.setAttribute('data-role','text-edit');
+      ta.value = t.content || '';
+
+      const fam = (t.font || 'Inter').replace(/^["']|["']$/g, '');
+      const familyCss = `"${fam}", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`;
+      const padH = 4, padV = 2;
+      const fs = Math.max(8, Math.round((t.size||16)*z*10)/10);
+
+      ta.style.cssText = [
+        `position:absolute`,
+        `left:${sx - padH}px`,
+        `top:${sy - padV}px`,
+        `width:${sw + padH*2}px`,
+        `min-width:40px`,
+        `height:${sh + padV*2}px`,
+        `min-height:20px`,
+        `z-index:20`,
+        `margin:0`,
+        `padding:${padV}px ${padH}px`,
+        `border:1.5px solid #0d99ff`,
+        `border-radius:2px`,
+        `outline:none`,
+        `resize:none`,
+        `overflow:hidden`,
+        `background:rgba(13,153,255,0.08)`,
+        `box-shadow:0 0 0 1px rgba(13,153,255,0.35), 0 2px 8px rgba(0,0,0,0.35)`,
+        `color:${this._textFillColor(n)}`,
+        `font:${t.italic?'italic ':''}${t.weight||400} ${fs}px ${familyCss}`,
+        `line-height:${String(t.lineHeight||1.2)}`,
+        `letter-spacing:${((t.letterSpacing||0)*z)}px`,
+        `text-align:${t.align||'left'}`,
+        `text-decoration:${[t.underline?'underline':'',t.strike?'line-through':''].filter(Boolean).join(' ')||'none'}`,
+        `white-space:pre-wrap`,
+        `word-wrap:break-word`,
+        `box-sizing:border-box`,
+        `caret-color:#7c5cff`,
+        `user-select:text`,
+        `-webkit-user-select:text`,
+        `tab-size:4`,
+      ].join(';');
+
       wrap.appendChild(ta);
-      // Focus + caret positioning: Figma-style — clicking places caret at
-      // the click position; programmatic entry (T key / double-click) puts
-      // caret at the end (or selects all only when explicitly asked).
-      try { ta.focus(); } catch (e) { }
-      const selectAll = opts && opts.selectAll;
-      if (selectAll) { try { ta.select(); } catch (e) {} }
-      else {
-        const len = ta.value.length;
-        try { ta.setSelectionRange(len, len); } catch (e) {}
-      }
-      this._textEdit = { n, ta };
+      R.setEditingText(n.id);
+      this._redrawLight();
+
+      // Commit logic
+      let committed = false;
+      const syncRect = () => {
+        // Re-run layout+world transforms so box tracks new text size.
+        try {
+          const mode = (t.resize) || 'fixed';
+          if (mode !== 'fixed' && !n.als) this.applyTextResize(n);
+        } catch(e){}
+        if (global.World && global.World.computePage) { try { global.World.computePage(this.page); } catch(e){} }
+        let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+        if (n._wc) for (const p of n._wc) { x0=Math.min(x0,p.x); y0=Math.min(y0,p.y); x1=Math.max(x1,p.x); y1=Math.max(y1,p.y); }
+        else { const wb=n._w||{x:n.x,y:n.y,w:n.w,h:n.h}; x0=wb.x; y0=wb.y; x1=wb.x+wb.w; y1=wb.y+wb.h; }
+        const nsx = x0*z + this.view.ox, nsy = y0*z + this.view.oy;
+        const nsw = Math.max(40,(x1-x0)*z), nsh = Math.max(20,(y1-y0)*z);
+        ta.style.left = (nsx-padH)+'px';
+        ta.style.top  = (nsy-padV)+'px';
+        ta.style.width = (nsw+padH*2)+'px';
+        ta.style.height = 'auto';
+        ta.style.height = Math.max(nsh+padV*2, ta.scrollHeight+padV*2)+'px';
+      };
       const commit = (ok) => {
-        if (!this._textEdit) return;
-        if (ok && this._textEdit) {
+        if (committed) return;
+        committed = true;
+        clearInterval(this._textFocusTimer);
+        document.removeEventListener('mousedown', onOutside, true);
+        // Ensure any in-progress canvas drag / marquee / pencil state
+        // from the click that just closed us is cleared so it doesn't
+        // continue running over a removed textarea.
+        this._drag = null;
+        this._snapGuides = null;
+        this.marquee = null;
+        if (this._marqueePreview) delete this._marqueePreview;
+        if (this.pencil) this.pencil = null;
+        if (ok) {
           const newVal = ta.value;
-          if (newVal !== n.text.content) {
+          // Restore the pre-edit value before opening the history batch so
+          // undo captures the actual original instead of the live draft.
+          t.content = originalContent;
+          if (originalRuns) t.runs = originalRuns;
+          else delete t.runs;
+          if (newVal !== originalContent) {
             this.history.begin(this.doc);
-            n.text.content = newVal.length ? newVal : ' ';
-            this.applyTextResize(n);
+            t.content = newVal.length ? newVal : ' ';
+            // Inline editing produces one plain-text run. Keeping stale rich
+            // runs would make the renderer show the old text after commit.
+            delete t.runs;
+            try { this.applyTextResize(n); } catch(e){}
             this.history.end(this.doc);
           }
+        } else {
+          t.content = originalContent;
+          if (originalRuns) t.runs = originalRuns;
+          else delete t.runs;
         }
-        this.endTextEdit();
+        R.setEditingText(null);
+        this._textEdit = null;
+        if (ta.parentNode) ta.remove();
+        this.status('');
         this.markDirty();
       };
-      ta.addEventListener('blur', () => commit(true));
+      const onOutside = (e) => {
+        if (e.target === ta) return;
+        if (ta.contains(e.target)) return;
+        // Don't commit when clicking toolbar/menu/popover UI (they call
+        // their own actions which may want to interact with the text node).
+        // Keep this list in sync with any new popover/modal classes.
+        if (e.target.closest && (
+          e.target.closest('.ed-top') || e.target.closest('.ed-left') ||
+          e.target.closest('.ed-right') || e.target.closest('.ed-toolbar') ||
+          e.target.closest('.ed-zoom') || e.target.closest('.pf-menu') ||
+          e.target.closest('.pf-palette') || e.target.closest('.pf-font-picker') ||
+          e.target.closest('.ed-modal-backdrop') || e.target.closest('.modal-back') ||
+          e.target.closest('.pf-modal') || e.target.closest('#penfig-toast') ||
+          e.target.closest('.pin.open') || e.target.closest('.peer-cursor'))) return;
+        commit(true);
+      };
+      // Register outside-click AFTER pointer events fully finish. We use a
+      // requestAnimationFrame + 80ms delay so the click/pointerup/click
+      // events that opened us don't immediately close us — those events
+      // often still propagate to the document 0-2 frames later.
+      const registerOutside = () => document.addEventListener('mousedown', onOutside, true);
+      requestAnimationFrame(() => setTimeout(registerOutside, 80));
+
       ta.addEventListener('input', () => {
-        // Live-resize textarea to content for hug-mode feel, without
-        // running full layout (avoids typing jank).
-        n.text.content = ta.value;
-        // Update the textarea size to match growing content.
-        ta.style.height = 'auto';
-        const nH = Math.max(sh, ta.scrollHeight + 4);
-        ta.style.height = nH + 'px';
+        t.content = ta.value;
+        syncRect();
+        try { this._redrawLight(); } catch(e){}
       });
+      // Capture phase keydown/keyup/keypress — this fires BEFORE the
+      // window-level capture keydown listener used by present mode,
+      // guaranteeing typing never dispatches to App shortcuts / nudge /
+      // delete-selection / setTool while editing text.
+      const keyP = (ev) => { ev.stopPropagation(); ev.stopImmediatePropagation && ev.stopImmediatePropagation(); };
       ta.addEventListener('keydown', (ev) => {
-        // Let textarea handle arrow keys / typing natively, but stop
-        // propagation so global shortcuts (e.g. V/R/P) don't fire mid-edit.
-        ev.stopPropagation();
-        if (ev.key === 'Escape') { ev.preventDefault(); commit(false); }
-        else if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); commit(true); }
-        // Plain Enter types a newline; Tab inserts tab; no special handling.
+        keyP(ev);
+        if (ev.key === 'Escape') { ev.preventDefault(); commit(false); return; }
+        else if (ev.key === 'Enter' && (ev.metaKey||ev.ctrlKey)) { ev.preventDefault(); commit(true); return; }
+        else if (ev.key === 'Tab') {
+          // Tab inserts a tab character inside the textarea instead of
+          // moving focus to the next element. (Shift+Tab still blurs in
+          // most browsers — leave that alone for accessibility.)
+          ev.preventDefault();
+          const s = ta.selectionStart ?? ta.value.length;
+          const e = ta.selectionEnd ?? s;
+          ta.value = ta.value.slice(0, s) + '\t' + ta.value.slice(e);
+          ta.selectionStart = ta.selectionEnd = s + 1;
+          // Trigger the input path manually since setting value doesn't.
+          t.content = ta.value;
+          syncRect();
+          try { this._redrawLight(); } catch(ignored){}
+          return;
+        }
+        // Native Ctrl/Cmd+A/C/V/X/Z/Y are handled by the textarea itself;
+        // preventDefault is NOT called on them so native behavior works.
+        if (ev.metaKey || ev.ctrlKey) {
+          const k = ev.key.toLowerCase();
+          if (!('aczxyvy'.includes(k))) {
+            // Block non-text-editing combos from doing app-level things
+            // (e.g. Ctrl+F, Ctrl+G, Ctrl+D etc.) while editing.
+            ev.preventDefault();
+          }
+        }
+        // Allow arrow keys to navigate within textarea without nudge
+        if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(ev.key)) {
+          // native behavior, already prevented propagation above.
+        }
+      }, true);
+      ta.addEventListener('keyup', keyP, true);
+      ta.addEventListener('keypress', keyP, true);
+      // Composition events (IME / dead keys) must also not bubble up to
+      // trigger shortcuts while mid-composition.
+      ta.addEventListener('compositionstart', keyP, true);
+      ta.addEventListener('compositionupdate', keyP, true);
+      ta.addEventListener('compositionend', keyP, true);
+      ta.addEventListener('focus', () => {
+        // Re-assert focus — some browsers fire focus but then immediately
+        // steal it back if a layout pass runs. Set up a repeating keep-alive
+        // watchdog that fires every 200ms while the textarea is mounted;
+        // cleared on commit / endTextEdit so it does not leak.
+        clearInterval(this._textFocusTimer);
+        this._textFocusTimer = setInterval(() => {
+          if (committed) { clearInterval(this._textFocusTimer); return; }
+          if (document.activeElement !== ta) {
+            // Only fight for focus if focus landed somewhere we don't
+            // want it (body, canvas, null) — let it go to other text
+            // inputs in the inspector (color hex, number fields, etc.).
+            const ae = document.activeElement;
+            if (!ae || ae === document.body || ae === this.canvas) {
+              try { ta.focus({preventScroll:true}); } catch(e){}
+            }
+          }
+        }, 200);
       });
-      // Track this so we can remove listeners on end.
-      this._textEdit.commit = commit;
+      // Prevent mousedown/touchstart/pointerdown on the textarea from
+      // reaching the canvas (which would set up a drag or clear selection
+      // and could yank focus back to the body). Also intercept focusin
+      // dispatched by the browser itself so that any code that tries to
+      // move focus away while the editor is open is fought.
+      const stopP = (ev) => { ev.stopPropagation(); ev.stopImmediatePropagation && ev.stopImmediatePropagation(); };
+      // Input/change/paste/cut events shouldn't propagate to canvas either.
+      ta.addEventListener('input', stopP, true);
+      ta.addEventListener('paste', stopP, true);
+      ta.addEventListener('cut', stopP, true);
+      ta.addEventListener('focusin', stopP, true);
+      ta.addEventListener('mousedown', stopP, true);
+      ta.addEventListener('mouseup', stopP, true);
+      ta.addEventListener('click', stopP, true);
+      ta.addEventListener('dblclick', stopP, true);
+      ta.addEventListener('pointerdown', stopP, true);
+      ta.addEventListener('pointerup', stopP, true);
+      ta.addEventListener('touchstart', stopP, {passive:true, capture:true});
+      ta.addEventListener('touchend', stopP, {passive:true, capture:true});
+      ta.addEventListener('contextmenu', stopP, true);
+      // Watch for focus leaving the textarea to something that ISN'T the
+      // editor chrome (e.g. body / canvas) and bring it back. Inspector
+      // inputs are allowed so bold/color/font can be edited while text
+      // is open — the 200ms blur handler already defers commit; this
+      // watchdog additionally re-focuses if the canvas steals it.
+      ta.addEventListener('focusout', () => {
+        if (committed) return;
+        setTimeout(() => {
+          if (committed) return;
+          const ae = document.activeElement;
+          // If focus landed back on body or the canvas (the two most
+          // common "focus was stolen" cases), re-focus the textarea.
+          if (!ae || ae === document.body || ae === this.canvas) {
+            try { ta.focus({preventScroll:true}); } catch(e){}
+          }
+        }, 0);
+      });
+      // Blur should NOT commit immediately — if focus is lost to another
+      // element in the toolbar/panels the user is just adjusting settings;
+      // commit only on click outside the textarea wrapper.
+      ta.addEventListener('blur', () => {
+        // Give the browser a tick to settle focus on another element; if
+        // focus moved outside the canvas-wrap entirely (e.g., to the URL
+        // bar or a devtools panel), commit. Otherwise stay open so that
+        // inspector controls can modify the text while the editor is up.
+        setTimeout(() => {
+          if (committed) return;
+          const ae = document.activeElement;
+          if (ae && (ae === ta || (wrap && wrap.contains(ae)))) return;
+          // Only commit if focus went somewhere we don't control (like
+          // the URL bar, or outside the editor chrome).
+          if (ae && ae.closest && ae.closest('#view-editor')) return;
+          commit(true);
+        }, 200);
+      });
+
+      this._textEdit = { n, ta, commit };
+      this.status('Editing text — Esc to cancel, Ctrl/⌘+Enter to commit');
+
+      // FOCUS: Browsers reject programmatic .focus() calls that happen
+      // while a pointer/click gesture is still being dispatched. Defer
+      // focus until well after pointerdown/pointerup/click have all
+      // finished; retry multiple times in case focus gets stolen by a
+      // late rAF redraw or a browser-specific anti-popup timer.
+      let focusAttempts = 0;
+      const tryFocus = () => {
+        if (committed || !this._textEdit || this._textEdit.ta !== ta) return;
+        focusAttempts++;
+        if (document.activeElement === ta) return;
+        try {
+          // Blur whatever currently has focus first — some browsers
+          // (Safari in particular) refuse to move focus away from the
+          // body inside a pointer event unless you explicitly blur it.
+          if (document.activeElement && document.activeElement !== document.body && document.activeElement !== ta) {
+            try { document.activeElement.blur(); } catch(_){}
+          }
+          // Ensure textarea is still in DOM before focus
+          if (!ta.isConnected && wrap) wrap.appendChild(ta);
+          ta.focus({preventScroll:true});
+        } catch(e){
+          try { ta.focus(); } catch(_){}
+        }
+        // After focusing, select ALL text so typing replaces. This
+        // matches Figma: clicking/double-clicking/Enter on text selects
+        // it; the user can click again or use arrow keys to position caret.
+        if (document.activeElement === ta) {
+          const len = ta.value.length;
+          try { ta.setSelectionRange(0, len); } catch(e){}
+        }
+      };
+      // Schedule focus attempts at increasing delays. First waits a full
+      // rAF turn after the event unwinds, then retries at 16/50/120/300/600ms
+      // to handle various browser timing quirks.
+      const runFocusSchedule = () => {
+        tryFocus();
+        if (!committed && focusAttempts < 15) {
+          setTimeout(tryFocus, 16);
+          setTimeout(tryFocus, 50);
+          setTimeout(tryFocus, 120);
+          setTimeout(tryFocus, 300);
+          setTimeout(tryFocus, 600);
+        }
+      };
+      requestAnimationFrame(runFocusSchedule);
+      // After mounting and first layout, correct the rect and re-focus.
+      requestAnimationFrame(() => { if (!committed) syncRect(); tryFocus(); });
+    },
+    endTextEdit(commit) {
+      clearInterval(this._textFocusTimer);
+      if (this._textEdit) {
+        if (this._textEdit.commit) this._textEdit.commit(commit !== false);
+        else {
+          const { ta } = this._textEdit;
+          if (ta && ta.parentNode) ta.remove();
+          R.setEditingText(null);
+          this._textEdit = null;
+          this.markDirty();
+        }
+      }
     },
     _textFillColor(n) {
-      if (!n.fills || !n.fills.length) return '#ffffff';
-      for (const f of n.fills) {
-        if (f && f.visible !== false && f.type === 'solid' && f.color) return f.color;
+      // Pick a readable color for the in-place editor: prefer the first visible
+      // solid fill; default white for the dark canvas.
+      if (n.fills && n.fills.length) {
+        for (const f of n.fills) {
+          if (!f) continue;
+          if (f.visible === false) continue;
+          if (f.type !== 'solid') continue;
+          if (!f.color) continue;
+          // Dark text on dark canvas is invisible — force white.
+          const m = String(f.color).match(/^#?([0-9a-f]{6})$/i);
+          if (m) {
+            const r = parseInt(m[1].slice(0,2),16), g = parseInt(m[1].slice(2,4),16), b = parseInt(m[1].slice(4,6),16);
+            const lum = (r*299 + g*587 + b*114)/1000;
+            if (lum < 60) return '#ffffff';
+          }
+          return f.color;
+        }
       }
-      return n.fills[0] && n.fills[0].color || '#ffffff';
-    },
-    endTextEdit() {
-      if (this._textEdit) {
-        const { ta } = this._textEdit;
-        if (ta && ta.parentNode) ta.remove();
-        this._textEdit = null;
-      }
+      return '#ffffff';
     },
 
     // ------------------------------------------------------------- wheel / zoom
@@ -1862,13 +2444,16 @@
     // ------------------------------------------------------------- tools
     setTool(t) {
       if (this.tool === t) { this._penCleanup(); return; } // re-pressing a tool button resets its state
+      // Switching tools commits any in-progress text edit so focus returns
+      // to canvas and no orphan textarea lingers.
+      if (this._textEdit) this.endTextEdit(true);
       // leaving the pen/pencil tools: commit in-progress work
       if (this.tool === 'pen') this.penCommit(false, { silent: true });
       if (this.tool === 'pencil' && this.pencil) this.pencilAbort();
       this.tool = t;
       const tb = document.getElementById('ed-toolbar');
       if (tb) tb.querySelectorAll('.tool').forEach(b => b.classList.toggle('active', b.dataset.tool === t));
-      if (this.canvas) this.canvas.style.cursor = t === 'move' ? 'default' : t === 'text' ? 'text' : t === 'hand' ? 'grab' : 'crosshair';
+      if (this.canvas) this.canvas.style.cursor = t === 'move' ? 'default' : t === 'scale' ? 'nwse-resize' : t === 'text' ? 'text' : t === 'hand' ? 'grab' : 'crosshair';
       global.Panels.refreshInspector();
       this.markDirty();
     },
@@ -1891,6 +2476,15 @@
       if (this._paletteEl) { this.paletteKey(e); return; }
       if (this.doc && document.getElementById('view-editor').style.display !== 'none') {
         if (this.penKey(e)) return;
+        // Figma muscle memory: Enter on a single selected text node → edit it.
+        if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && this.sel.length === 1) {
+          const n = this.page.nodes[this.sel[0]];
+          if (n && n.type === 'text') {
+            e.preventDefault();
+            requestAnimationFrame(() => setTimeout(() => this.beginTextEdit(n), 16));
+            return;
+          }
+        }
         const b = global.Shortcuts.dispatch(e, this);
         if (b && b.keys !== 'space') e.preventDefault();
       } else if (e.key === 'Escape') {
@@ -1921,6 +2515,59 @@
       }
       this.history.end(this.doc);
       this.markDirty();
+    },
+    resizeBy(dw, dh, e) {
+      if (!this.sel.length) return;
+      const step = e && e.shiftKey ? 10 : 1;
+      this.history.begin(this.doc);
+      for (const id of this.sel) {
+        const n = this.page.nodes[id];
+        if (!n || n.locked) continue;
+        if (dw) n.w = Math.max(1, n.w + dw * step);
+        if (dh) n.h = Math.max(1, n.h + dh * step);
+        if (n.shape) n.path = this._shapePath(n);
+        if (n.type === 'text' && M.textResizeDemote) {
+          if (dw) M.textResizeDemote(n, 'h');
+          if (dh) M.textResizeDemote(n, 'v');
+        }
+      }
+      this.history.end(this.doc);
+      global.Panels.refreshInspector();
+      this.markDirty();
+    },
+    captureScaleTree(root) {
+      const out = [];
+      const visit = (n, isRoot) => {
+        out.push({ n, isRoot, x:n.x, y:n.y, w:n.w, h:n.h,
+          radius:Array.isArray(n.radius)?n.radius.slice():n.radius,
+          stroke:n.stroke ? { width:n.stroke.width||0, dash:(n.stroke.dash||[]).slice() } : null,
+          size:n.size, letterSpacing:n.letterSpacing, blur:n.blur,
+          shadows:(n.shadows||[]).map(s=>({x:s.x||0,y:s.y||0,blur:s.blur||0,spread:s.spread||0})),
+          al:n.al ? JSON.parse(JSON.stringify(n.al)) : null });
+        for (const id of n.children || []) { const c=this.page.nodes[id]; if(c) visit(c,false); }
+      };
+      visit(root,true);
+      return out;
+    },
+    applyScaleTree(snapshot, factor) {
+      if (!isFinite(factor) || factor <= 0) return;
+      const mul = v => typeof v === 'number' ? v * factor : v;
+      for (const s of snapshot) {
+        const n=s.n;
+        if (!s.isRoot) { n.x=s.x*factor; n.y=s.y*factor; n.w=Math.max(1,s.w*factor); n.h=Math.max(1,s.h*factor); }
+        n.radius=Array.isArray(s.radius)?s.radius.map(mul):mul(s.radius);
+        if(n.stroke&&s.stroke){ n.stroke.width=mul(s.stroke.width); n.stroke.dash=s.stroke.dash.map(mul); }
+        if(typeof s.size==='number') n.size=Math.max(1,mul(s.size));
+        if(typeof s.letterSpacing==='number') n.letterSpacing=mul(s.letterSpacing);
+        if(typeof s.blur==='number') n.blur=mul(s.blur);
+        (n.shadows||[]).forEach((sh,i)=>{const b=s.shadows[i];if(b){sh.x=mul(b.x);sh.y=mul(b.y);sh.blur=mul(b.blur);sh.spread=mul(b.spread);}});
+        if(n.al&&s.al){
+          n.al=JSON.parse(JSON.stringify(s.al));
+          ['gap','gapCross'].forEach(k=>{if(n.al[k]&&typeof n.al[k].n==='number')n.al[k].n*=factor;});
+          if(Array.isArray(n.al.pad)) n.al.pad.forEach(p=>{if(p&&typeof p.n==='number')p.n*=factor;});
+        }
+        if(n.shape) n.path=this._shapePath(n);
+      }
     },
     zoomTo100() { const r = this.canvas.getBoundingClientRect(); this.zoomAt(r.width / 2, r.height / 2, 1 / this.view.zoom); },
     zoomToSelection() {
@@ -2214,7 +2861,7 @@
       this.clipboard = data;
       if (cut) this.deleteSel();
     },
-    paste() {
+    paste(inPlace) {
       if (!this.clipboard) return;
       this.history.begin(this.doc);
       const page = this.page;
@@ -2222,7 +2869,7 @@
       for (const t of this.clipboard.trees) {
         // clones registered straight into the live page, then attached
         const c = M.deepClone(page, t, true, page);
-        c.x += 20; c.y += 20;
+        if (!inPlace) { c.x += 20; c.y += 20; }
         M.attach(this.doc, page, null, c);
         newSel.push(c.id);
       }

@@ -46,12 +46,14 @@
 
   // ------------------------------------------------------------- Tools (Figma keys)
   def('v', 'Move / select', 'Tools', (a) => a.setTool('move'));
+  def('k', 'Scale', 'Tools', (a) => a.setTool('scale'));
   def('f', 'Frame', 'Tools', (a) => a.setTool('frame'));
   def('s', 'Section', 'Tools', (a) => a.setTool('section'));
   def('r', 'Rectangle', 'Tools', (a) => a.setTool('rect'));
   def('o', 'Ellipse', 'Tools', (a) => a.setTool('ellipse'));
   def('l', 'Line', 'Tools', (a) => a.setTool('line'));
-  def('a', 'Arrow', 'Tools', (a) => a.setTool('arrow'));
+  def('shift+l', 'Arrow', 'Tools', (a) => a.setTool('arrow'));
+  def('a', 'Arrow (alternate)', 'Tools', (a) => a.setTool('arrow'));
   def('p', 'Pen', 'Tools', (a) => a.setTool('pen'));
   def('n', 'Pencil', 'Tools', (a) => a.setTool('pencil'));
   def('t', 'Text', 'Tools', (a) => a.setTool('text'));
@@ -64,6 +66,7 @@
   def('mod+c', 'Copy', 'Editing', (a) => a.copySel());
   def('mod+x', 'Cut', 'Editing', (a) => a.copySel(true));
   def('mod+v', 'Paste', 'Editing', (a) => a.paste());
+  def('shift+mod+v', 'Paste in place', 'Editing', (a) => a.paste(true));
   def('mod+d', 'Duplicate', 'Editing', (a) => { a.duplicateSel(); });
   def('mod+z', 'Undo', 'Editing', (a) => a.historyUndo());
   def('shift+mod+z', 'Redo', 'Editing', (a) => a.historyRedo());
@@ -80,10 +83,18 @@
   def('backspace', 'Delete selection', 'Editing', (a) => a.deleteSel());
   def('tab', 'Next layer', 'Editing', (a) => a.cycleSel(1));
   def('shift+tab', 'Previous layer', 'Editing', (a) => a.cycleSel(-1));
-  def('arrowleft', 'Nudge left (⇧ 10px)', 'Editing', (a) => a.nudge(-1, 0));
-  def('arrowright', 'Nudge right (⇧ 10px)', 'Editing', (a) => a.nudge(1, 0));
-  def('arrowup', 'Nudge up (⇧ 10px)', 'Editing', (a) => a.nudge(0, -1));
-  def('arrowdown', 'Nudge down (⇧ 10px)', 'Editing', (a) => a.nudge(0, 1));
+  def('arrowleft', 'Nudge left (⇧ 10px)', 'Editing', (a, e) => a.nudge(-1, 0, e));
+  def('arrowright', 'Nudge right (⇧ 10px)', 'Editing', (a, e) => a.nudge(1, 0, e));
+  def('arrowup', 'Nudge up (⇧ 10px)', 'Editing', (a, e) => a.nudge(0, -1, e));
+  def('arrowdown', 'Nudge down (⇧ 10px)', 'Editing', (a, e) => a.nudge(0, 1, e));
+  def('mod+arrowleft', 'Decrease width', 'Transform', (a, e) => a.resizeBy(-1, 0, e));
+  def('mod+arrowright', 'Increase width', 'Transform', (a, e) => a.resizeBy(1, 0, e));
+  def('mod+arrowup', 'Decrease height', 'Transform', (a, e) => a.resizeBy(0, -1, e));
+  def('mod+arrowdown', 'Increase height', 'Transform', (a, e) => a.resizeBy(0, 1, e));
+  def('shift+mod+arrowleft', 'Decrease width 10px', 'Transform', (a, e) => a.resizeBy(-1, 0, e));
+  def('shift+mod+arrowright', 'Increase width 10px', 'Transform', (a, e) => a.resizeBy(1, 0, e));
+  def('shift+mod+arrowup', 'Decrease height 10px', 'Transform', (a, e) => a.resizeBy(0, -1, e));
+  def('shift+mod+arrowdown', 'Increase height 10px', 'Transform', (a, e) => a.resizeBy(0, 1, e));
   // ------------------------------------------------------------- Vector (Figma boolean keys)
   def('mod+]', 'Union', 'Vector', (a) => a.booleanSel('union'));
   def('mod+[', 'Subtract', 'Vector', (a) => a.booleanSel('subtract'));

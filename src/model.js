@@ -75,7 +75,7 @@
     if (type === 'ellipse') { n.w = opts.w || 100; n.h = opts.h || 100; n.fills = [{ type: 'solid', color: '#d9d9d9', opacity: 1, token: null }]; }
     if (type === 'line') { n.w = opts.w != null ? opts.w : 200; n.h = opts.h != null ? opts.h : 1; n.fills = []; n.stroke = { color: '#000000', width: 2, opacity: 1, align: 'inside', token: null, visible: true }; }
     if (type === 'text') {
-      n.w = opts.w || 120; n.h = opts.h || 24; n.fills = [{ type: 'solid', color: '#1e1e1e', opacity: 1, token: null }];
+      n.w = opts.w || 120; n.h = opts.h || 24; n.fills = [{ type: 'solid', color: '#ffffff', opacity: 1, token: null }];
       n.text = Object.assign({
         content: 'Text', font: 'Inter', size: 16, weight: 400, italic: false,
         lineHeight: 1.2, letterSpacing: 0, align: 'left', valign: 'top', token: null,

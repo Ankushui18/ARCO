@@ -21,6 +21,11 @@
 (function (global) {
   'use strict';
 
+  // Transient editor state. Kept outside the document so it is never saved,
+  // exported, cloned, or included in undo snapshots.
+  let editingTextId = null;
+  function setEditingText(id) { editingTextId = id || null; }
+
   const M = global.Model;
   const imgCache = new Map();
 
@@ -61,7 +66,7 @@
     if (run.color) col = run.color;
     else {
       const fill = n.fills && n.fills[0];
-      const { color, opacity } = resolvedColor(doc, fill || { color: '#1e1e1e' }, '#1e1e1e');
+      const { color, opacity } = resolvedColor(doc, fill || { color: '#ffffff' }, '#ffffff');
       ctx.globalAlpha = (ctx.globalAlphaBase ?? 1) * (n.opacity == null ? 1 : n.opacity) * (fill && fill.opacity != null ? fill.opacity : 1) * (run.opacity != null ? run.opacity : 1);
       ctx.fillStyle = M.rgbaCss(color, opacity);
       return;
@@ -197,15 +202,28 @@
           ctx.globalAlpha = (ctx.globalAlphaBase ?? 1) * (f.opacity == null ? 1 : f.opacity);
           ctx.save();
           ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+          // Crop rect in normalized source coords (0..1). Default full image.
+          const crop = f.crop && f.crop.w > 0 && f.crop.h > 0
+            ? { x: Math.max(0, Math.min(1, f.crop.x)), y: Math.max(0, Math.min(1, f.crop.y)),
+                w: Math.max(0.01, Math.min(1, f.crop.w)), h: Math.max(0.01, Math.min(1, f.crop.h)) }
+            : { x: 0, y: 0, w: 1, h: 1 };
+          // Source pixel sub-rectangle inside the image.
+          const sx = crop.x * iw, sy = crop.y * ih;
+          const sw = crop.w * iw, sh = crop.h * ih;
           if (f.scaleMode === 'fit') {
-            const s = Math.min(w / iw, h / ih);
-            ctx.drawImage(img, x + (w - iw * s) / 2, y + (h - ih * s) / 2, iw * s, ih * s);
+            // Fit: scale so the whole crop rect is visible inside the box.
+            const s = Math.min(w / sw, h / sh);
+            const dw = sw * s, dh = sh * s;
+            ctx.drawImage(img, sx, sy, sw, sh, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
           } else if (f.scaleMode === 'tile') {
-            const tw = (f.tileScale || 1) * iw, th = (f.tileScale || 1) * ih;
-            for (let yy = y; yy < y + h; yy += th) for (let xx = x; xx < x + w; xx += tw) ctx.drawImage(img, xx, yy, tw, th);
+            // Tile: tile the cropped source rect across the box.
+            const tw = (f.tileScale || 1) * sw, th = (f.tileScale || 1) * sh;
+            for (let yy = y; yy < y + h; yy += th) for (let xx = x; xx < x + w; xx += tw) ctx.drawImage(img, sx, sy, sw, sh, xx, yy, tw, th);
           } else { // fill / crop
-            const s = Math.max(w / iw, h / ih);
-            ctx.drawImage(img, x + (w - iw * s) / 2, y + (h - ih * s) / 2, iw * s, ih * s);
+            // Fill: cover-fit the crop rect to the box (cropping overflow).
+            const s = Math.max(w / sw, h / sh);
+            const dw = sw * s, dh = sh * s;
+            ctx.drawImage(img, sx, sy, sw, sh, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
           }
           ctx.restore();
         } else {
@@ -299,7 +317,25 @@
               ctx.globalAlpha = (ctx.globalAlphaBase ?? 1) * (fill.opacity == null ? 1 : fill.opacity);
               ctx.save();
               ctx.clip(p, rule);
-              ctx.drawImage(img, 0, 0, pw, ph);
+              const iw = img.naturalWidth, ih = img.naturalHeight;
+              const crop = fill.crop && fill.crop.w > 0 && fill.crop.h > 0
+                ? { x: Math.max(0, Math.min(1, fill.crop.x)), y: Math.max(0, Math.min(1, fill.crop.y)),
+                    w: Math.max(0.01, Math.min(1, fill.crop.w)), h: Math.max(0.01, Math.min(1, fill.crop.h)) }
+                : { x: 0, y: 0, w: 1, h: 1 };
+              const sx = crop.x * iw, sy = crop.y * ih;
+              const sw = crop.w * iw, sh = crop.h * ih;
+              if (fill.scaleMode === 'fit') {
+                const s = Math.min(pw / sw, ph / sh);
+                const dw = sw * s, dh = sh * s;
+                ctx.drawImage(img, sx, sy, sw, sh, (pw - dw) / 2, (ph - dh) / 2, dw, dh);
+              } else if (fill.scaleMode === 'tile') {
+                const tw = (fill.tileScale || 1) * sw, th = (fill.tileScale || 1) * sh;
+                for (let yy = 0; yy < ph; yy += th) for (let xx = 0; xx < pw; xx += tw) ctx.drawImage(img, sx, sy, sw, sh, xx, yy, tw, th);
+              } else {
+                const s = Math.max(pw / sw, ph / sh);
+                const dw = sw * s, dh = sh * s;
+                ctx.drawImage(img, sx, sy, sw, sh, (pw - dw) / 2, (ph - dh) / 2, dw, dh);
+              }
               ctx.restore();
             }
           }
@@ -480,11 +516,14 @@
   }
 
   function drawText(ctx, n, doc, w, h) {
+    // The DOM textarea is the single source of pixels while inline editing.
+    // Painting the canvas copy as well creates the doubled-text artifact.
+    if (n.id === editingTextId) return;
     const t = n.text || {};
     ctx.save();
     ctx.globalAlpha = (ctx.globalAlphaBase ?? 1) * (n.opacity == null ? 1 : n.opacity);
     const fill = n.fills && n.fills[0];
-    const { color, opacity } = resolvedColor(doc, fill || { color: '#1e1e1e' }, '#1e1e1e');
+    const { color, opacity } = resolvedColor(doc, fill || { color: '#ffffff' }, '#ffffff');
     ctx.fillStyle = M.rgbaCss(color, opacity);
     ctx.font = fontSpec(n);
     try { ctx.letterSpacing = (t.letterSpacing || 0) + 'px'; } catch (e) { }
@@ -887,6 +926,25 @@
     ctx.restore();
   }
 
+  function drawHover(ctx, view, node) {
+    if (!node || node.visible === false) return;
+    const W = global.World;
+    const corners = W && W.screenCorners ? W.screenCorners(view, node) : null;
+    if (!corners || corners.length !== 4) return;
+    ctx.save();
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.globalAlpha = .72;
+    ctx.strokeStyle = '#8f76ff';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(corners[0].x, corners[0].y);
+    for (let i = 1; i < 4; i++) ctx.lineTo(corners[i].x, corners[i].y);
+    ctx.closePath(); ctx.stroke();
+    ctx.restore();
+  }
+
   function drawDevMeasure(ctx, view, page, doc, selIds) {
     const sel = selIds.map(id => page.nodes[id]).filter(Boolean);
     if (!sel.length) return;
@@ -1026,7 +1084,8 @@
   }
 
   global.Renderer = {
-    drawPage, drawSelection, drawMarquee, drawNode, drawDevMeasure, drawGrid,
+    drawPage, drawSelection, drawHover, drawMarquee, drawNode, drawDevMeasure, drawGrid,
+    setEditingText,
     measureText, textLines, fontSpec, textBoxWidth, setTextCtx,
     drawPaints, drawStroke, drawShadows,
     renderRegion, pageBounds, selectionBounds,
