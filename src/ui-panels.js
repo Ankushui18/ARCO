@@ -445,7 +445,6 @@
     },
     textSection(n) {
       const t = n.text || {};
-      const fonts = ['Inter', 'Helvetica', 'Arial', 'Roboto', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'Garamond', 'Futura', 'Impact'];
       return `
         <section class="ins-sec">
           <div class="ins-head"><span>Text</span><button class="mini" data-act="edit-text" title="Edit text">${Ico('edit',{size:11})}</button></div>
@@ -455,7 +454,10 @@
             <span class="ins-spacer"></span><span style="font-size:9px;opacity:.55">Auto-resize</span>
           </div>
           <div class="ins-grid g2"><label>Font</label>
-            <select data-act="t-font">${fonts.map(f => `<option ${t.font === f ? 'sel' : ''}>${f}</option>`).join('')}</select>
+            <button type="button" class="pf-font-btn" data-act="t-font" title="Change font">
+              <span class="pf-font-name" style="font-family:&quot;${(t.font||'Inter').replace(/"/g,'&quot;')}&quot;,Inter,sans-serif">${esc(t.font||'Inter')}</span>
+              <span style="margin-left:auto;opacity:.55">${Ico('chevron_r',{size:10})}</span>
+            </button>
           </div>
           <div class="ins-grid g3">
             <label>Size</label><input type="number" min="4" max="300" value="${t.size}" data-act="t-size">
@@ -1219,7 +1221,17 @@
         App.applyTextResize(n); // re-fit hug axes to the content
       })));
       const tf = el.querySelector('[data-act="t-font"]');
-      if (tf) tf.addEventListener('change', () => commit(() => { n.text.font = tf.value; App.applyTextResize(n); }));
+      if (tf) tf.addEventListener('click', (ev) => {
+        ev.preventDefault(); ev.stopPropagation();
+        if (!global.Fonts) return;
+        global.Fonts.openPicker(tf, n.text.font, (family) => {
+          commit(() => { n.text.font = family; });
+          // Kick off a load so it's ready by the next paint.
+          global.Fonts.ensureLoaded(family, n.text.weight, n.text.italic).then(() => {
+            App.applyTextResize(n); App.markDirty();
+          });
+        });
+      });
       const ts = el.querySelector('[data-act="t-size"]');
       if (ts) ts.addEventListener('input', () => commit(() => { n.text.size = Math.max(4, +ts.value || 14); App.applyTextResize(n); }));
       const tw = el.querySelector('[data-act="t-weight"]');

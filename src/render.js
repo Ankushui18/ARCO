@@ -38,7 +38,10 @@
   function fontStack(n) {
     const t = n.text || {};
     const fam = (t.font || 'Inter').replace(/^["']|["']$/g, '');
-    return `'${fam}', Inter, 'Helvetica Neue', Arial, sans-serif`;
+    // Use the Fonts manager's canonical stack if available so Google Fonts
+    // are picked up; otherwise a sensible system fallback.
+    if (global.Fonts && global.Fonts.stack) return global.Fonts.stack(fam);
+    return `"${fam}", Inter, -apple-system, 'Helvetica Neue', Arial, sans-serif`;
   }
   function fontSpec(n, scale = 1, override) {
     const t = n.text || {};

@@ -1076,48 +1076,103 @@
       const movesE = d.name.includes('e'), movesW = d.name.includes('w');
       const movesS = d.name.includes('s'), movesN = d.name.includes('n');
       const isCorner = d.name.length === 2;
-      // Snapshot anchor + handle on first call (opposite corner/edge stays fixed).
+
+      // Snapshot anchor + handle in LOCAL content space on first move.
+      // The anchor is the opposite corner/edge-midpoint that stays FIXED
+      // in world space for the duration of the drag; this is the only
+      // source of truth and works for rotated/flipped nodes too.
       if (!d._snapInitialized) {
         d._snapInitialized = true;
         const hmap = { nw:[0,0], n:[sw/2,0], ne:[sw,0], e:[sw,sh/2], se:[sw,sh], s:[sw/2,sh], sw:[0,sh], w:[0,sh/2] };
         const [hx, hy] = hmap[d.name] || [sw,sh];
         d._hx = hx; d._hy = hy;
         d._ax = sw - hx; d._ay = sh - hy;
+        // Anchor's WORLD position at drag start — we will preserve this
+        // exactly through every subsequent move so the opposite side
+        // never drifts/teleports (this was the old "frame kahan chala
+        // ja raha hai" bug — the n.x/n.y adjustment used to be plain
+        // subtraction in parent-local space, which is wrong for rotated
+        // nodes and has sign errors for left/top handles).
+        const wt = n._wt;
+        if (wt) {
+          d._anchorWorld = W.transformPoint(wt, d._ax, d._ay);
+        } else {
+          d._anchorWorld = { x: n.x + d._ax, y: n.y + d._ay };
+        }
+        d._rot = n.rotation || 0;
+        d._fh = n.flipH ? -1 : 1;
+        d._fv = n.flipV ? -1 : 1;
       }
-      // Map world pointer → node-local content coords.
+
+      // Map world pointer → node-local content coords using inverse of
+      // the CURRENT (pre-resize) world transform. This reads the pointer
+      // in the node's own rotated coordinate frame.
       let lpx, lpy;
       if (n._wt) {
         const lp = W.worldToLocal(n, p.x, p.y);
         if (!lp) return;
         lpx = lp.x; lpy = lp.y;
       } else { lpx = p.x - n.x; lpy = p.y - n.y; }
+
+      // Compute new w/h from local pointer. Anchor-relative math: the
+      // anchor is at (d._ax, d._ay) in local space; the dragged handle is
+      // at (d._hx, d._hy). After resize the handle tracks lpx/lpy.
       let newW = sw, newH = sh;
-      if (movesE) newW = Math.max(4, Math.abs(lpx - d._ax));
-      else if (movesW) newW = Math.max(4, Math.abs(lpx - d._ax));
-      if (movesS) newH = Math.max(4, Math.abs(lpy - d._ay));
-      else if (movesN) newH = Math.max(4, Math.abs(lpy - d._ay));
+      if (movesE) newW = Math.max(4, lpx);             // E side: local x is new width (anchor at x=0)
+      else if (movesW) newW = Math.max(4, d._ax - lpx); // W side: local x negative, width = ax - lpx
+      else newW = sw;
+      if (movesS) newH = Math.max(4, lpy);              // S side
+      else if (movesN) newH = Math.max(4, d._ay - lpy); // N side
+      else newH = sh;
+
       if (isCorner && e.shiftKey) {
         const ratio = sw / sh;
         if (newW / ratio > newH) newH = newW / ratio; else newW = newH * ratio;
       }
-      // New local position of the dragged handle/corner.
-      let newHx, newHy;
-      if (isCorner) { newHx = movesE ? newW : 0; newHy = movesS ? newH : 0; }
-      else {
-        newHx = movesE ? newW : movesW ? 0 : newW/2;
-        newHy = movesS ? newH : movesN ? 0 : newH/2;
-      }
-      // Shift top-left so the anchor stays at its current world/parent-local point.
-      n.x += d._ax - newHx;
-      n.y += d._ay - newHy;
+
+      // Solve for new n.x, n.y so anchor stays fixed in world space.
+      // LocalToParent for anchor (ax,ay) in node-local coords with size (w,h),
+      // rotation r, flips (fh,fv) is:
+      //   T(x,y)·T(w/2,h/2)·R(r)·S(fh,fv)·T(-w/2,-h/2) · (ax,ay,1)
+      // = (x + w/2 + cos(r)*fh*(ax-w/2) - sin(r)*fv*(ay-h/2),
+      //    y + h/2 + sin(r)*fh*(ax-w/2) + cos(r)*fv*(ay-h/2))
+      // Set this equal to anchorWorld = (awx, awy) and solve for x,y:
+      const ax = d._ax, ay = d._ay;
+      const rot = d._rot || 0, fh = d._fh || 1, fv = d._fv || 1;
+      const cr = Math.cos(rot), sr = Math.sin(rot);
+      const lx = (ax - newW/2) * fh;
+      const ly = (ay - newH/2) * fv;
+      const rx = lx*cr - ly*sr;
+      const ry = lx*sr + ly*cr;
+      n.x = d._anchorWorld.x - newW/2 - rx;
+      n.y = d._anchorWorld.y - newH/2 - ry;
       n.w = newW; n.h = newH;
+
+      // Sizing-mode transitions.
       if (n.type === 'text') {
         if (movesE || movesW) M.textResizeDemote(n, 'h');
         if (movesN || movesS) M.textResizeDemote(n, 'v');
+        this.applyTextResize(n);
       }
-      this._snapGuides = null;
       if (n.shape) n.path = this._shapePath(n);
-      if (n.type === 'text') this.applyTextResize(n);
+
+      // Auto-layout children: if this node is an AL child (parent is
+      // auto-layout), resizing it with the pointer promotes it to fixed
+      // sizing on that axis so the layout engine doesn't fight us.
+      if (n.parentId) {
+        const parent = this.page.nodes[n.parentId];
+        if (parent && parent.al) {
+          if (parent.al.direction === 'horizontal' || parent.al.wrap) {
+            if (movesW || movesE) { n.sizingW = 'fixed'; n.alW = newW; }
+            if (movesN || movesS) { n.sizingH = 'fixed'; n.alH = newH; }
+          } else {
+            if (movesW || movesE) { n.sizingW = 'fixed'; n.alW = newW; }
+            if (movesN || movesS) { n.sizingH = 'fixed'; n.alH = newH; }
+          }
+        }
+      }
+
+      this._snapGuides = null;
       this.markDirty();
       this.status('w ' + Math.round(n.w) + '   h ' + Math.round(n.h));
     },    statusPos() {
@@ -1606,48 +1661,113 @@
 
     // ------------------------------------------------------------- text editing
     _textEdit: null,
-    beginTextEdit(n) {
+    beginTextEdit(n, opts) {
       this.endTextEdit();
       const wrap = document.querySelector('.ed-canvas-wrap');
+      if (!wrap) return;
       const ta = document.createElement('textarea');
       ta.className = 'text-edit';
+      ta.setAttribute('spellcheck', 'false');
+      ta.setAttribute('autocomplete', 'off');
+      ta.setAttribute('autocorrect', 'off');
+      ta.setAttribute('autocapitalize', 'off');
       ta.value = n.text.content;
-      const s = this.toScreen({ x: n._w ? n._w.x : n.x, y: n._w ? n._w.y : n.y });
-      const L = n._l || { x: n.x, y: n.y, w: n.w, h: n.h };
+      // Position in SCREEN space using the node's WORLD bbox. Using n._w
+      // (axis-aligned world bbox) works because the canvas is screen-
+      // aligned; we position the textarea over the node's world bbox.
+      const z = this.view.zoom;
+      const wb = n._w || { x: n.x, y: n.y, w: n.w, h: n.h };
+      const sx = wb.x * z + this.view.ox;
+      const sy = wb.y * z + this.view.oy;
+      const sw = Math.max(48, wb.w * z);
+      const sh = Math.max(22, wb.h * z);
+      // Font props — mirror canvas exactly.
+      const t = n.text || {};
+      const family = t.font || 'Inter';
+      const familyCss = `"${family}", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`;
+      const pad = 1; // sub-pixel so border doesn't clip glyphs
       Object.assign(ta.style, {
-        left: s.x + 'px', top: s.y + 'px',
-        width: Math.max(60, L.w * this.view.zoom) + 'px',
-        height: Math.max(28, L.h * this.view.zoom) + 'px',
-        fontSize: n.text.size * this.view.zoom + 'px',
-        fontWeight: n.text.weight,
-        fontStyle: n.text.italic ? 'italic' : 'normal',
-        lineHeight: String(n.text.lineHeight || 1.2),
-        textAlign: n.text.align,
-        color: (n.fills[0] && n.fills[0].color) || '#1e1e1e',
+        left: (sx - pad) + 'px', top: (sy - pad) + 'px',
+        width: (sw + pad*2) + 'px',
+        height: (sh + pad*2) + 'px',
+        fontSize: Math.round((t.size || 16) * z * 100)/100 + 'px',
+        fontWeight: t.weight || 400,
+        fontStyle: t.italic ? 'italic' : 'normal',
+        fontFamily: familyCss,
+        letterSpacing: ((t.letterSpacing || 0) * z) + 'px',
+        lineHeight: String(t.lineHeight || 1.2),
+        textAlign: t.align || 'left',
+        color: this._textFillColor(n),
+        background: 'transparent',
+        padding: pad + 'px',
+        whiteSpace: 'pre-wrap',
+        wordWrap: 'break-word',
+        overflow: 'hidden',
+        textDecoration: [
+          t.underline ? 'underline' : '',
+          t.strike ? 'line-through' : ''
+        ].filter(Boolean).join(' ') || 'none',
       });
       wrap.appendChild(ta);
+      // Focus + caret positioning: Figma-style — clicking places caret at
+      // the click position; programmatic entry (T key / double-click) puts
+      // caret at the end (or selects all only when explicitly asked).
       try { ta.focus(); } catch (e) { }
-      if (ta.select) ta.select();
+      const selectAll = opts && opts.selectAll;
+      if (selectAll) { try { ta.select(); } catch (e) {} }
+      else {
+        const len = ta.value.length;
+        try { ta.setSelectionRange(len, len); } catch (e) {}
+      }
       this._textEdit = { n, ta };
       const commit = (ok) => {
+        if (!this._textEdit) return;
         if (ok && this._textEdit) {
-          this.history.begin(this.doc);
-          n.text.content = ta.value || ' ';
-          this.applyTextResize(n); // re-fit per auto-resize mode
-          this.history.end(this.doc);
+          const newVal = ta.value;
+          if (newVal !== n.text.content) {
+            this.history.begin(this.doc);
+            n.text.content = newVal.length ? newVal : ' ';
+            this.applyTextResize(n);
+            this.history.end(this.doc);
+          }
         }
         this.endTextEdit();
         this.markDirty();
       };
       ta.addEventListener('blur', () => commit(true));
+      ta.addEventListener('input', () => {
+        // Live-resize textarea to content for hug-mode feel, without
+        // running full layout (avoids typing jank).
+        n.text.content = ta.value;
+        // Update the textarea size to match growing content.
+        ta.style.height = 'auto';
+        const nH = Math.max(sh, ta.scrollHeight + 4);
+        ta.style.height = nH + 'px';
+      });
       ta.addEventListener('keydown', (ev) => {
+        // Let textarea handle arrow keys / typing natively, but stop
+        // propagation so global shortcuts (e.g. V/R/P) don't fire mid-edit.
         ev.stopPropagation();
         if (ev.key === 'Escape') { ev.preventDefault(); commit(false); }
-        if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); commit(true); }
+        else if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); commit(true); }
+        // Plain Enter types a newline; Tab inserts tab; no special handling.
       });
+      // Track this so we can remove listeners on end.
+      this._textEdit.commit = commit;
+    },
+    _textFillColor(n) {
+      if (!n.fills || !n.fills.length) return '#ffffff';
+      for (const f of n.fills) {
+        if (f && f.visible !== false && f.type === 'solid' && f.color) return f.color;
+      }
+      return n.fills[0] && n.fills[0].color || '#ffffff';
     },
     endTextEdit() {
-      if (this._textEdit) { this._textEdit.ta.remove(); this._textEdit = null; }
+      if (this._textEdit) {
+        const { ta } = this._textEdit;
+        if (ta && ta.parentNode) ta.remove();
+        this._textEdit = null;
+      }
     },
 
     // ------------------------------------------------------------- wheel / zoom
