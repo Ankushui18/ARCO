@@ -50,13 +50,16 @@
         <div class="pf-dialog-body"><p class="pf-dialog-msg">${esc(message)}</p></div>
         <div class="pf-modal-foot pf-dialog-foot">
           <button type="button" class="ed-btn" data-dlg="cancel">${esc(opts.cancelLabel || 'Cancel')}</button>
-          <button type="button" class="ed-btn ${opts.danger ? 'ed-btn-danger' : 'ed-btn-primary'}" data-dlg="ok">${esc(opts.okLabel || 'Delete')}</button>
+          <button type="button" class="ed-btn ${opts.danger ? 'ed-btn-danger' : 'ed-btn-primary'}" data-dlg="ok">${esc(opts.okLabel || (opts.danger ? 'Delete' : 'OK'))}</button>
         </div>`;
       const okBtn = card.querySelector('[data-dlg="ok"]');
       const cancelBtn = card.querySelector('[data-dlg="cancel"]');
       const onKey = (e) => {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
-        if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); finish(true); }
+        if (e.key === 'Enter') {
+          e.preventDefault(); e.stopPropagation();
+          finish(document.activeElement === cancelBtn ? false : true);
+        }
       };
       function finish(v) {
         card.removeEventListener('keydown', onKey, true);
@@ -68,7 +71,7 @@
       card.addEventListener('keydown', onKey, true);
       okBtn.addEventListener('click', () => finish(true));
       cancelBtn.addEventListener('click', () => finish(false));
-      requestAnimationFrame(() => okBtn.focus());
+      requestAnimationFrame(() => (opts.danger ? cancelBtn : okBtn).focus());
     });
   }
 
@@ -98,8 +101,8 @@
         closeWith(back, resolve, v);
       }
       function onKey(e) {
-        if (e.key === 'Enter') { e.preventDefault(); finish(input.value); }
-        if (e.key === 'Escape') { e.preventDefault(); finish(null); }
+        if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); finish(input.value); }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); }
       }
       function onBackdropClick(e) { if (e.target === back) finish(null); }
       back.addEventListener('click', onBackdropClick);

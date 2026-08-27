@@ -544,7 +544,8 @@
             f.arrayBuffer().then(b => this.openFromBytes(b, f.name, 'pfg'));
             break;
           } else if (/\.fig$/i.test(f.name)) {
-            f.arrayBuffer().then(b => this.openFromBytesAsync(b, f.name, 'fig'));
+            if (this.openFromFile) this.openFromFile(f);
+            else f.arrayBuffer().then(b => this.openFromBytesAsync(b, f.name, 'fig'));
             break;
           }
         }
@@ -685,12 +686,14 @@
     },
     async openFromBytesAsync(bytes, name, kind) {
       // Tiering:
-      //   <10 MB  → synchronous main thread (no overhead)
-      //   10–150 MB → worker with progress UI + cancel
-      //   >150 MB → warn first (may use a lot of memory), then worker
+      //   <400 KB → main thread (tiny fixtures)
+      //   400 KB–150 MB → worker with progress UI + cancel
+      //   >150 MB → warn first, then worker
+      // A 2 MB .fig is often 20k kiwi nodes. The old 10 MB cutoff left
+      // almost every real file on the main thread, which froze the tab.
       const size = bytes && bytes.byteLength != null ? bytes.byteLength : (bytes && bytes.length) || 0;
       const MB = 1024*1024;
-      const SMALL = 10*MB, WARN = 150*MB;
+      const SMALL = 400 * 1024, WARN = 150*MB;
       if (kind !== 'fig' || size < SMALL || !this.supportsImportWorker()) {
         return this.openFromBytes(bytes, name, kind);
       }
@@ -2493,6 +2496,19 @@
       const typing = /INPUT|TEXTAREA|SELECT/.test((e.target.tagName || ''));
       if (typing) {
         if (e.key === 'Escape') e.target.blur();
+        return;
+      }
+      // Modal trap: canvas shortcuts must not fire under a dialog.
+      // Dialogs.js handles Escape/Enter itself; we only swallow the rest
+      // and, if Escape reached us (focus not in the dialog), click the
+      // backdrop — every modal here already closes on backdrop click.
+      const modal = Array.from(document.querySelectorAll('.pf-dialog-backdrop, .ed-modal-backdrop, .modal-back'))
+        .find((el) => el.style.display !== 'none' && getComputedStyle(el).display !== 'none');
+      if (modal) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        }
         return;
       }
       if (this._paletteEl) { this.paletteKey(e); return; }

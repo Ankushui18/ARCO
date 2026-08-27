@@ -34,8 +34,8 @@
   };
 
   // ================================================================ IMPORT
-  function importFig(bytes, onProgress) {
-    const parsed = global.FigIO.parseFigFile(bytes);
+  function importFig(bytes, onProgress, parsed) {
+    parsed = parsed || global.FigIO.parseFigFile(bytes);
     const msg = parsed.binary.message;
     const blobs = msg.blobs || []; // binary blobs referenced by index (vector paths, …)
     // kiwi decoders omit fields that equal their default (e.g. guid 0:0,
@@ -60,11 +60,11 @@
       return ks;
     };
 
-    // images
-    const images = new Map(); // hex hash → {dataURL, bytes}
+    // images — encode to data URL lazily when a fill actually uses the hash.
+    // Eager btoa of every archive image is a large part of "import froze the tab".
+    const images = new Map(); // hex hash → {bytesU8, dataURL}
     for (const [name, bytesU8] of parsed.images) {
-      const b64 = bytesToB64(bytesU8);
-      images.set(name, { dataURL: 'data:image/png;base64,' + b64, bytes: b64 });
+      images.set(name, { bytesU8, dataURL: null });
     }
 
     const doc = M.newDoc((parsed.meta && (parsed.meta.file_name || parsed.meta.name)) || 'Imported file');
@@ -111,36 +111,54 @@
       doc.vars.defaultMode = doc.vars.modes[0].id;
     }
 
-    // --- pages
-    let canvasNodes = docId
-      ? sortKids(docId).filter(n => n.type === 'CANVAS' || n.type === 'SLIDE')
-      : nodes.filter(n => (n.type === 'CANVAS' || n.type === 'SLIDE') && !n.parentIndex);
-    // Figma internal canvases (e.g. "Internal Only Canvas") are not user-visible
-    // pages — they contain no user nodes. Filter them out.
+    // --- pages (CANVAS, SLIDE, and Slides decks via SLIDE_GRID/SLIDE_ROW)
+    const roots = docId ? sortKids(docId) : nodes.filter(n => !n.parentIndex);
+    let canvasNodes = [];
+    const seenPage = new Set();
+    const pushPage = (cn) => {
+      if (!cn || seenPage.has(gid(cn))) return;
+      seenPage.add(gid(cn));
+      canvasNodes.push(cn);
+    };
+    for (const n of roots) {
+      if (n.type === 'CANVAS' || n.type === 'SLIDE') pushPage(n);
+      else if (n.type === 'SLIDE_GRID') {
+        for (const row of sortKids(gid(n))) {
+          if (row.type === 'SLIDE_ROW') {
+            for (const sl of sortKids(gid(row))) if (sl.type === 'SLIDE') pushPage(sl);
+          } else if (row.type === 'SLIDE' || row.type === 'CANVAS') pushPage(row);
+        }
+      }
+    }
+    report.rawPages = canvasNodes.length;
+    // Only drop Figma's hidden system canvas. Never drop a user page because
+    // it looked "empty" — that is why some pages never imported.
     canvasNodes = canvasNodes.filter(cn => {
-      const name = (cn.name || '').toLowerCase();
-      if (name.includes('internal')) return false;
-      // also drop empty pages whose only purpose is internal metadata
-      const kids = sortKids(gid(cn));
-      // keep if the page has a user-visible name OR has at least one non-variable child
-      return kids.some(k => k.type !== 'VARIABLE' && k.type !== 'VARIABLE_SET');
+      const name = (cn.name || '').trim().toLowerCase();
+      return name !== 'internal only canvas' && !name.startsWith('internal only');
     });
     if (!canvasNodes.length) {
       const page = M.newPage('Page 1');
       doc.pages = [page];
-      for (const n of nodes) if (!n.parentIndex && n.type !== 'DOCUMENT') {
-        mapNode(page, doc, null, n, images, report, byId, blobs);
+      for (const n of nodes) if (!n.parentIndex && n.type !== 'DOCUMENT' && n.type !== 'VARIABLE' && n.type !== 'VARIABLE_SET') {
+        mapNode(page, doc, null, n, images, report, byId, blobs, sortKids);
       }
       report.pages = 1;
     } else {
       doc.pages = canvasNodes.map(cn => {
         const page = M.newPage(cn.name || 'Page');
-        for (const kid of sortKids(gid(cn))) mapNode(page, doc, null, kid, images, report, byId, blobs);
+        for (const kid of sortKids(gid(cn))) {
+          if (kid.type === 'VARIABLE' || kid.type === 'VARIABLE_SET' || kid.type === 'VARIABLE_OVERRIDE') continue;
+          mapNode(page, doc, null, kid, images, report, byId, blobs, sortKids);
+        }
         report.pages++;
         return page;
       });
     }
-    for (const p of doc.pages) M.stampPage(doc, p);
+    for (const p of doc.pages) {
+      M.stampPage(doc, p);
+      fixImportedSizes(p);
+    }
     // Re-bind imported instances to their components (may be on any page).
     {
       const guidToId = new Map();
@@ -158,14 +176,68 @@
         }
       }
     }
-    expandEmptyInstances(doc);
+    if (report.nodes < 2500) expandEmptyInstances(doc);
+    else report.warnings.push('Skipped expanding empty instances (' + report.nodes + ' layers) so the file can open.');
     doc.meta = parsed.meta;
-    return { doc, report };
+    const imageBytes = collectUsedImageBytes(doc, images);
+    return { doc, report, imageBytes };
+  }
+
+  function collectUsedImageBytes(doc, images) {
+    const used = new Set();
+    for (const page of doc.pages) {
+      for (const id of Object.keys(page.nodes)) {
+        const n = page.nodes[id];
+        for (const f of (n && n.fills) || []) {
+          if (f && f.type === 'image' && f.hash) used.add(String(f.hash));
+        }
+      }
+    }
+    const out = [];
+    for (const [name, rec] of images) {
+      if (!rec || !rec.bytesU8) continue;
+      const key = String(name);
+      if (used.has(key) || used.has(key.toLowerCase())) out.push([key, rec.bytesU8]);
+    }
+    return out;
   }
 
   // After the tree is built, Figma INSTANCE nodes that shipped without a
   // cloned subtree (common in newer files) stay visually empty. Clone the
   // bound component's children so the canvas actually shows something.
+  // Groups / unknown containers often omit size in kiwi. After children
+  // exist, hug to their union so the page is not a 1×1 empty box.
+  function fixImportedSizes(page) {
+    const visit = (id) => {
+      const n = page.nodes[id];
+      if (!n) return;
+      for (const cid of n.children || []) visit(cid);
+      if (!n.children || !n.children.length) return;
+      if ((n.w > 2 && n.h > 2) && n.type !== 'frame') return;
+      if (n.w > 4 && n.h > 4) return;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const cid of n.children) {
+        const k = page.nodes[cid];
+        if (!k) continue;
+        x0 = Math.min(x0, k.x); y0 = Math.min(y0, k.y);
+        x1 = Math.max(x1, k.x + (k.w || 0)); y1 = Math.max(y1, k.y + (k.h || 0));
+      }
+      if (!isFinite(x0)) return;
+      const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
+      if (n.w <= 4 || n.h <= 4) {
+        // Shift children so they stay in local space of the new box.
+        for (const cid of n.children) {
+          const k = page.nodes[cid];
+          if (!k) continue;
+          k.x -= x0; k.y -= y0;
+        }
+        n.x += x0; n.y += y0;
+        n.w = w; n.h = h;
+      }
+    };
+    for (const id of page.tops) visit(id);
+  }
+
   function expandEmptyInstances(doc) {
     for (const page of doc.pages) {
       for (const id of Object.keys(page.nodes)) {
@@ -331,41 +403,46 @@
     return pa < pb ? -1 : pa > pb ? 1 : 0;
   }
 
-  function mapNode(page, doc, parentId, fn, images, report, byId, blobs) {
+  function mapNode(page, doc, parentId, fn, images, report, byId, blobs, sortKids) {
     let type;
     let probedGeo = null; // for unknown types: decoded geometry, if any
     switch (fn.type) {
       case 'FRAME': case 'SECTION': case 'SLIDE': case 'GROUP':
-      case 'COMPONENT_SET': case 'BOOLEAN_OPERATION': type = 'frame'; break;
-      case 'ROUNDED_RECTANGLE': type = 'rect'; break;
-      case 'SYMBOL': case 'COMPONENT': type = 'frame'; break; // SYMBOL = component master in this schema era
+      case 'COMPONENT_SET': case 'BOOLEAN_OPERATION':
+      case 'SYMBOL': case 'COMPONENT':
+      case 'STICKY': case 'SHAPE_WITH_TEXT': case 'WIDGET': case 'STAMP':
+      case 'MEDIA': case 'HIGHLIGHT': case 'SECTION_OVERLAY':
+      case 'TABLE': case 'TABLE_CELL': case 'CODE_BLOCK':
+      case 'ASSISTED_LAYOUT': case 'INTERACTIVE_SLIDE_ELEMENT':
+      case 'WASHI_TAPE': case 'CONNECTOR': case 'MODULE':
+        type = 'frame'; break;
+      case 'ROUNDED_RECTANGLE': case 'RECTANGLE': type = 'rect'; break;
       case 'INSTANCE': type = 'instance'; break;
-      case 'RECTANGLE': type = 'rect'; break;
       case 'ELLIPSE': type = 'ellipse'; break;
       case 'LINE': type = 'line'; break;
       case 'TEXT': type = 'text'; break;
       case 'VECTOR': case 'STAR': case 'POLYGON': case 'ARC':
       case 'REGULAR_POLYGON': case 'STAR_SHAPE': type = 'vector'; break;
-      case 'VARIABLE': case 'VARIABLE_SET': return null;
+      case 'VARIABLE': case 'VARIABLE_SET': case 'VARIABLE_OVERRIDE': case 'SLICE':
+        return null;
       default:
-        // Unknown node type: if it carries decodable geometry import it as a
-        // vector, otherwise keep a positioned placeholder.
+        // Unknown type: keep geometry if we can decode it, otherwise a frame
+        // so children are not dropped (that is how pages imported at ~half).
         probedGeo = decodeVectorPath(fn, blobs);
         if (probedGeo) {
           type = 'vector';
         } else {
           report.skipped[fn.type] = (report.skipped[fn.type] || 0) + 1;
-          type = 'vector'; // placeholder keeps position/size
-          report.warnings.push((fn.name || fn.type) + ' (' + fn.type + ') imported as placeholder');
+          type = 'frame';
         }
     }
     const n = M.makeNode(type);
     n.name = fn.name || n.name;
-    const size = fn.size || { x: 0, y: 0 };
-    n.w = size.x || 1; n.h = size.y || (type === 'line' ? 1 : 1);
-    const tr = fn.transform || {};
-    n.x = tr.m02 || 0; n.y = tr.m12 || 0;
+    const sz = readFigSize(fn);
+    n.w = sz.w; n.h = type === 'line' && !(fn.size && fn.size.y > 0) ? Math.max(1, sz.h) : sz.h;
+    applyFigTransform(n, fn.transform);
     n.visible = fn.visible !== false;
+    if (fn.mask) n.mask = true;
     n.opacity = fn.opacity == null ? 1 : fn.opacity;
     n.blend = (fn.blendMode || 'NORMAL').toLowerCase();
     // constraints (MIN/CENTER/MAX/STRETCH/SCALE) + resizeToFit
@@ -471,18 +548,29 @@
 
     if (type === 'text') {
       const td = fn.textData || {};
+      const st0 = (td.styleOverrideTable && td.styleOverrideTable[0]) || {};
+      const fontName = fn.fontName || st0.fontName || ((td.fontMetaData && td.fontMetaData[0] && td.fontMetaData[0].key) || {});
+      const fontSize = fn.fontSize != null ? fn.fontSize : (st0.fontSize != null ? st0.fontSize : 14);
+      const fontStyle = (fontName && fontName.style) || '';
+      const meta = (td.fontMetaData || []).find(m => m && m.key && fontName.family && m.key.family === fontName.family) || (td.fontMetaData && td.fontMetaData[0]);
+      const stFills = st0.fillPaints || st0.fills;
+      if ((!n.fills || !n.fills.length) && stFills && stFills.length) {
+        n.fills = stFills.filter(p => p && p.visible !== false).map(p => mapPaint(p, images, report)).filter(Boolean);
+      }
       n.text = {
         content: td.characters != null ? td.characters : 'Text',
-        font: (fn.fontName && fn.fontName.family) || 'Inter',
-        size: fn.fontSize || 14,
-        weight: parseWeight(fn.fontName && fn.fontName.style, fn.fontWeight),
-        italic: /italic/i.test((fn.fontName && fn.fontName.style) || ''),
-        lineHeight: numToMul(fn.lineHeight, fn.fontSize || 14),
-        letterSpacing: (fn.letterSpacing && fn.letterSpacing.value) || 0,
-        align: (fn.textAlignHorizontal || 'LEFT').toLowerCase(),
-        valign: (fn.textAlignVertical || 'TOP').toLowerCase(),
+        font: (fontName && fontName.family) || 'Inter',
+        size: fontSize || 14,
+        weight: parseWeight(fontStyle, (meta && meta.fontWeight) || fn.fontWeight || st0.fontWeight),
+        italic: /italic/i.test(fontStyle),
+        lineHeight: numToMul(fn.lineHeight || st0.lineHeight, fontSize || 14),
+        letterSpacing: ((fn.letterSpacing && fn.letterSpacing.value) != null ? fn.letterSpacing.value : (st0.letterSpacing && st0.letterSpacing.value)) || 0,
+        align: (fn.textAlignHorizontal || st0.textAlignHorizontal || 'LEFT').toLowerCase(),
+        valign: (fn.textAlignVertical || st0.textAlignVertical || 'TOP').toLowerCase(),
         token: null,
       };
+      const runs = figTextRuns(td, fn, st0, images, report);
+      if (runs && runs.length > 1) n.text.runs = runs;
       const autoResize = fn.textAutoResize;
       // free text keeps its auto-resize mode in text.resize; auto-layout
       // items keep their item sizing (from stackChild sizing above). The
@@ -523,26 +611,59 @@
       doc.components[n.id] = doc.components[n.id] || { id: n.id, name: n.name, main: n.id, variants: {} };
       doc.components[n.id].variants[n.name] = n.id;
     }
-    if (fn.type === 'INSTANCE' && fn.overriddenSymbolID) {
-      // see export: the instance→component binding is carried in the legacy
-      // GUID field; resolved to a penfig id in the post-pass below.
-      n._figMainGuid = fn.overriddenSymbolID.sessionID + ':' + fn.overriddenSymbolID.localID;
+    if (fn.type === 'INSTANCE') {
+      const sid = fn.overriddenSymbolID
+        || (fn.symbolData && (fn.symbolData.symbolID || fn.symbolData.guid))
+        || (fn.derivedSymbolData && (fn.derivedSymbolData.symbolID || fn.derivedSymbolData.guid));
+      if (sid && sid.sessionID != null) n._figMainGuid = sid.sessionID + ':' + sid.localID;
     }
     M.attach(doc, page, parentId, n);
     report.nodes++;
     const rawRef = byId.get(gid(fn));
     if (rawRef) rawRef._pfid = n.id; // guid → penfig id (for instance rebinding)
-    // children
-    const subKids = getKids(byId, gid(fn));
-    subKids.sort(posCmp);
-    for (const k of subKids) mapNode(page, doc, n.id, k, images, report, byId, blobs);
+    // children — O(k) via the prebuilt map. The old getKids scanned every
+    // node for every parent (O(n²)) and froze real files.
+    const subKids = sortKids ? sortKids(gid(fn)) : [];
+    for (const k of subKids) {
+      if (k.type === 'VARIABLE' || k.type === 'VARIABLE_SET' || k.type === 'VARIABLE_OVERRIDE') continue;
+      mapNode(page, doc, n.id, k, images, report, byId, blobs, sortKids);
+    }
     return n;
   }
 
-  function getKids(byId, pid) {
-    const out = [];
-    for (const n of byId.values()) if (n.parentIndex && n.parentIndex.guid && n.parentIndex.guid.sessionID + ':' + n.parentIndex.guid.localID === pid) out.push(n);
-    return out;
+  function figTextRuns(td, fn, st0, images, report) {
+    const chars = td && td.characters;
+    const ids = td && td.characterStyleIDs;
+    const table = (td && td.styleOverrideTable) || [];
+    if (!chars || !ids || !ids.length || !table.length) return null;
+    const styleOf = (id) => table[id] || st0 || fn;
+    const runStyle = (st) => {
+      const fontName = (st && st.fontName) || fn.fontName || {};
+      const fill = ((st && (st.fillPaints || st.fills)) || [])[0];
+      const paint = fill ? mapPaint(fill, images, report) : null;
+      return {
+        font: fontName.family,
+        weight: parseWeight(fontName.style, st && st.fontWeight),
+        size: st && st.fontSize,
+        italic: /italic/i.test(fontName.style || ''),
+        color: paint && paint.type === 'solid' ? paint.color : undefined,
+        underline: st && String(st.textDecoration || '').toUpperCase().includes('UNDERLINE'),
+        strike: st && String(st.textDecoration || '').toUpperCase().includes('STRIKE'),
+      };
+    };
+    const runs = [];
+    let i = 0;
+    while (i < chars.length) {
+      const id = ids[i] || 0;
+      let j = i + 1;
+      while (j < chars.length && (ids[j] || 0) === id) j++;
+      const st = styleOf(id);
+      const r = runStyle(st);
+      r.text = chars.slice(i, j);
+      runs.push(r);
+      i = j;
+    }
+    return runs;
   }
   const tok0 = (v) => ({ n: typeof v === 'number' ? v : 0, tok: null });
   function mapAlign(v, def) {
@@ -592,10 +713,10 @@
   }
   function lookupImage(images, hash) {
     if (!hash || !images) return null;
-    if (images.has(hash)) return images.get(hash);
-    const lower = String(hash).toLowerCase();
-    if (images.has(lower)) return images.get(lower);
-    return null;
+    let im = images.get(hash);
+    if (!im) im = images.get(String(hash).toLowerCase());
+    if (!im) return null;
+    return im;
   }
   function paintHash(p) {
     const h = p && p.image && p.image.hash;
@@ -615,7 +736,7 @@
       const hash = paintHash(p);
       const im = lookupImage(images, hash);
       if (!im && hash) report.warnings.push('image hash ' + hash + ' not found in archive');
-      return { type: 'image', src: im ? im.dataURL : null, scaleMode: String(p.imageScaleMode || 'FILL').toLowerCase(), opacity: p.opacity == null ? 1 : p.opacity, hash, token: null };
+      return { type: 'image', src: (im && im.dataURL) || null, scaleMode: String(p.imageScaleMode || 'FILL').toLowerCase(), opacity: p.opacity == null ? 1 : p.opacity, hash, token: null };
     }
     if (kind === 'GRADIENT_LINEAR' || kind === 'GRADIENT_RADIAL' || kind === 'GRADIENT_ANGULAR' || kind === 'GRADIENT_DIAMOND') {
       const stops = (p.stops || p.gradientStops || []).map(s => ({
@@ -820,6 +941,29 @@
       out.strokeWeight = n.stroke.width;
       out.strokeAlign = (n.stroke.align || 'inside').toUpperCase();
     }
+    // Figma's v101 renderer expects editable shape paints to reference binary
+    // geometry. Layer structure and Fill values can still appear in the UI
+    // without it, but the canvas imports blank (the exact failure caught by
+    // test-fig-starter-roundtrip.js). Emit a local-space outline for every
+    // paintable primitive, not only custom VECTOR nodes.
+    if (ctx && global.FigIO && ['frame', 'instance', 'rect', 'ellipse'].includes(n.type)) {
+      try {
+        const w = Math.max(0.01, n.w || 0.01), h = Math.max(0.01, n.h || 0.01);
+        let d;
+        if (n.type === 'ellipse') {
+          const k = 0.5522847498307936, cx = w / 2, cy = h / 2, ox = cx * k, oy = cy * k;
+          d = `M ${cx} 0 C ${cx + ox} 0 ${w} ${cy - oy} ${w} ${cy} C ${w} ${cy + oy} ${cx + ox} ${h} ${cx} ${h} C ${cx - ox} ${h} 0 ${cy + oy} 0 ${cy} C 0 ${cy - oy} ${cx - ox} 0 ${cx} 0 Z`;
+        } else {
+          d = `M 0 0 L ${w} 0 L ${w} ${h} L 0 ${h} Z`;
+        }
+        const commands = global.FigIO.pathToCommandsBlob(d);
+        if (commands && commands.length) {
+          const blob = ctx.addBlob(commands);
+          if (out.fillPaints.length) out.fillGeometry = [{ windingRule: 'NONZERO', commandsBlob: blob, styleID: 0 }];
+          if (out.strokePaints && out.strokePaints.length) out.strokeGeometry = [{ windingRule: 'NONZERO', commandsBlob: blob, styleID: 0 }];
+        }
+      } catch (e) { /* keep export alive; round-trip test catches regressions */ }
+    }
     if (n.type === 'vector' && n.path && ctx && global.FigIO) {
       try {
         const cmd = global.FigIO.pathToCommandsBlob(n.path);
@@ -844,7 +988,7 @@
       const cg = guidOf.get(srcId);
       if (cg) out.overriddenSymbolID = cg;
     }
-    if (n.type === 'rect') {
+    if (n.type === 'rect' || n.type === 'frame' || n.type === 'instance') {
       const r = n.radius;
       if (r.every(v => v === r[0]) && r[0] > 0) out.cornerRadius = r[0];
       if (n.cornerSmooth) out.cornerSmoothing = n.cornerSmooth;
@@ -889,18 +1033,32 @@
       out.stackCounterAlign = { start: 'MIN', center: 'CENTER', end: 'MAX', stretch: 'STRETCH' }[n.al.cross] || 'MIN';
       if (n.al.wrap) out.stackWrap = 'WRAP';
       if (n.al.gapCross && n.al.gapCross.n > 0) out.stackCounterSpacing = n.al.gapCross.n;
+      // Container sizing and child sizing are different fields in Figma.
+      // Missing these made fixed frames reopen as Hug and recompute height.
+      const ownW = n.als && n.als.w ? n.als.w : 'fixed';
+      const ownH = n.als && n.als.h ? n.als.h : 'fixed';
+      const ownPrimary = n.al.dir === 'h' ? ownW : ownH;
+      const ownCounter = n.al.dir === 'h' ? ownH : ownW;
+      const figOwnSize = (mode) => mode === 'hug' ? 'RESIZE_TO_FIT' : 'FIXED';
+      out.stackPrimarySizing = figOwnSize(ownPrimary);
+      out.stackCounterSizing = figOwnSize(ownCounter);
     }
     if (n.als) {
-      const ps = n.al ? undefined : (n.als.w === 'fixed' ? 'FIXED' : n.als.w === 'hug' ? 'RESIZE_TO_FIT' : 'RESIZE_TO_FIT_WITH_IMPLICIT_SIZE');
-      const cs = n.al ? undefined : (n.als.h === 'fixed' ? 'FIXED' : n.als.h === 'hug' ? 'RESIZE_TO_FIT' : 'RESIZE_TO_FIT_WITH_IMPLICIT_SIZE');
-      if (ps && n.type !== 'text') out.stackPrimarySizing = ps;
-      if (cs && n.type !== 'text') out.stackCounterSizing = cs;
-      const growMain = (n.als.grow > 0 || (!n.al && (n.als.w === 'fill' && n._parentDir === 'h') || (n.als.w === 'fill' && n._parentDir === 'v') && false)) ? 1 : 0;
-      if (n.als.w === 'fill' || n.als.h === 'fill' || n.als.grow > 0) {
+      const parent = n.parent && page.nodes[n.parent];
+      const pdir = parent && parent.al ? parent.al.dir : 'h';
+      const primary = pdir === 'h' ? n.als.w : n.als.h;
+      const counter = pdir === 'h' ? n.als.h : n.als.w;
+      const figChildSize = (mode) => mode === 'hug' ? 'RESIZE_TO_FIT' : 'FIXED';
+      if (n.type !== 'text') {
+        out.stackChildPrimarySizing = figChildSize(primary);
+        out.stackChildCrossSizing = figChildSize(counter);
+      }
+      if (primary === 'fill' || n.als.grow > 0) {
         out.stackChildPrimaryGrow = n.als.grow > 0 ? n.als.grow : 1;
       }
       if (n.als.absolute) out.stackPositioning = 'ABSOLUTE';
-      if (n.als.align && n.als.align !== 'auto') out.stackChildAlignSelf = { start: 'MIN', center: 'CENTER', end: 'MAX', stretch: 'STRETCH' }[n.als.align] || 'MIN';
+      if (counter === 'fill') out.stackChildAlignSelf = 'STRETCH';
+      else if (n.als.align && n.als.align !== 'auto') out.stackChildAlignSelf = { start: 'MIN', center: 'CENTER', end: 'MAX', stretch: 'STRETCH' }[n.als.align] || 'MIN';
     }
     if (n.minW) out.minSize = { value: { x: n.minW, y: n.minH || 0 } };
     if (n.maxW) out.maxSize = { value: { x: n.maxW, y: n.maxH || 0 } };
@@ -940,6 +1098,15 @@
         stops: (f.stops || []).map(s => ({ color: { ...M.hexToRgb(s.color), a: s.opacity == null ? 1 : s.opacity }, position: s.pos ?? 0 })),
         transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 },
         visible: true,
+      };
+    }
+    if (f.type === 'radial') {
+      return {
+        type: 'GRADIENT_RADIAL',
+        stops: (f.stops || []).map(s => ({ color: { ...M.hexToRgb(s.color), a: s.opacity == null ? 1 : s.opacity }, position: s.pos ?? 0 })),
+        transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 },
+        opacity: f.opacity == null ? 1 : f.opacity,
+        visible: f.visible !== false,
       };
     }
     if (f.type === 'image' && (f.hash || f.src)) {

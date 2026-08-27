@@ -157,7 +157,7 @@
       if (n.type === 'ellipse') {
         out.push(pad + '  <ellipse cx="' + (w / 2) + '" cy="' + (h / 2) + '" rx="' + (w / 2) + '" ry="' + (h / 2) + '" ' + fa.attr + st + '/>');
       } else if (n.type === 'line') {
-        out.push(pad + '  <line x1="0" y1="' + (h / 2) + '" x2="' + w + '" y2="' + (h / 2) + '" fill="none"' + (st || ' stroke="#111" stroke-width="1"') + '/>');
+        out.push(pad + '  <line x1="0" y1="' + (h / 2) + '" x2="' + w + '" y2="' + (h / 2) + '" fill="none"' + (st || ' stroke="none"') + '/>');
       } else if (n.type === 'vector' && n.path) {
         const rule = n.windingRule === 'evenodd' ? 'evenodd' : 'nonzero';
         out.push(pad + '  <path d="' + n.path + '" fill-rule="' + rule + '" ' + fa.attr + st + '/>');

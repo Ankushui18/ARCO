@@ -1,0 +1,7 @@
+{
+  "name": "Penfig",
+  "short_name": "Penfig",
+  "start_url": "./",
+  "display": "standalone",
+  "description": "Offline-first design editor"
+}

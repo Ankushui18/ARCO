@@ -41,14 +41,21 @@
       const f = n.fills?.[0]; const fa = f ? fillSvg(f, doc) : null;
       s += `<ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${w / 2}" ry="${h / 2}" ${fa?.attr || ''} ${stA}/>`;
     } else if (n.type === 'line') {
-      s += `<line x1="${x}" y1="${y + h / 2}" x2="${x + w}" y2="${y + h / 2}" ${stA || `stroke="#333" stroke-width="1"`}/>`;
-      if (n.arrowEnd) {
-        const len = Math.max(10, (st?.width || 1) * 5);
+      s += `<line x1="${x}" y1="${y + h / 2}" x2="${x + w}" y2="${y + h / 2}" ${stA || 'stroke="none"'}/>`;
+      if (n.arrowEnd && st) {
+        const len = Math.max(10, st.width * 5);
         const a = Math.PI * 26 / 180;
         const ex = x + w, ey = y + h / 2;
-        const sa = stA || `stroke="#333" stroke-width="1"`;
+        const sa = stA;
         s += `<line x1="${ex}" y1="${ey}" x2="${ex - len * Math.cos(a)}" y2="${ey - len * Math.sin(a)}" ${sa}/>`;
         s += `<line x1="${ex}" y1="${ey}" x2="${ex - len * Math.cos(a)}" y2="${ey + len * Math.sin(a)}" ${sa}/>`;
+      }
+      if (n.arrowStart && st) {
+        const len = Math.max(10, st.width * 5);
+        const a = Math.PI * 26 / 180;
+        const sx = x, sy = y + h / 2;
+        s += `<line x1="${sx}" y1="${sy}" x2="${sx + len * Math.cos(a)}" y2="${sy - len * Math.sin(a)}" ${stA}/>`;
+        s += `<line x1="${sx}" y1="${sy}" x2="${sx + len * Math.cos(a)}" y2="${sy + len * Math.sin(a)}" ${stA}/>`;
       }
     } else if (n.type === 'vector') {
       if (n.path) {

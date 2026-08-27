@@ -243,9 +243,9 @@
     ctx.globalAlpha = ctx.globalAlphaBase ?? 1;
   }
 
-  function drawStroke(ctx, x, y, w, h, r, stroke) {
+  function drawStroke(ctx, x, y, w, h, r, stroke, doc) {
     if (!stroke || !stroke.visible) return;
-    const { color, opacity } = resolvedColor({ color: stroke.color, opacity: stroke.opacity, token: stroke.token }, stroke, '#000000');
+    const { color, opacity } = resolvedColor(doc, stroke, '#000000');
     const wt = stroke.width || 0;
     if (wt <= 0) return;
     ctx.save();
@@ -273,10 +273,10 @@
     ctx.restore();
   }
 
-  function drawShadows(ctx, x, y, w, h, r, shadows) {
+  function drawShadows(ctx, x, y, w, h, r, shadows, doc) {
     for (const s of shadows || []) {
       if (!s.visible) continue;
-      const { color, opacity } = resolvedColor(s, '#000000');
+      const { color, opacity } = resolvedColor(doc, s, '#000000');
       ctx.save();
       ctx.shadowColor = M.rgbaCss(color, (s.opacity == null ? 1 : s.opacity) * opacity);
       ctx.shadowBlur = (s.blur || 0);
@@ -402,40 +402,39 @@
     }
     // Now (0,0) = top-left of local content; children draw at (k.x,k.y).
 
-    if ((n.type === 'frame' || n.type === 'instance') && n.clips) {
+    if (n.type === 'frame' || n.type === 'instance') {
+      // Effects belong behind the frame plate. Previously the inspector let
+      // users add a shadow to a frame but this branch never painted it.
+      drawShadows(ctx, 0, 0, w, h, n.radius, n.shadows, doc);
+
+      // A frame's own fill always respects its corner radius. `clips` only
+      // controls descendants; it must not decide whether the frame plate is
+      // rounded. Keep this local clip separate from the descendant clip.
+      ctx.save();
       roundedPath(ctx, 0, 0, w, h, n.radius);
       ctx.clip();
-    }
-
-    if (n.type === 'frame' || n.type === 'instance') {
       if (n.section && !n.fills.length) {
         ctx.fillStyle = '#efeff1';
         ctx.fillRect(0, 0, w, h);
         ctx.strokeStyle = '#d5d5da';
         ctx.lineWidth = 1;
         ctx.strokeRect(0.5, 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
-      } else if (!n.fills.length) {
-        // Figma still paints a faint plate + 1px outline so empty frames
-        // are never "the file looks blank".
-        ctx.globalAlpha = (ctx.globalAlphaBase ?? 1);
-        ctx.fillStyle = 'rgba(255,255,255,0.045)';
-        ctx.fillRect(0, 0, w, h);
-        ctx.globalAlpha = ctx.globalAlphaBase;
       }
-      drawPaints(ctx, 0, 0, w, h, n.fills, doc);
-      // Figma frames have no automatic stroke. Only paint n.stroke when the
-      // user turned it on. Empty frames keep a faint plate so they stay visible.
-      if (n.stroke && n.stroke.visible) drawStroke(ctx, 0, 0, w, h, n.radius, n.stroke);
+      drawPaints(ctx, 0, 0, w, h, n.fills || [], doc);
+      ctx.restore();
+      // Figma frames have no automatic outline. Transparent frames stay truly
+      // transparent; the editor selection overlay provides discoverability.
+      if (n.stroke && n.stroke.visible) drawStroke(ctx, 0, 0, w, h, n.radius, n.stroke, doc);
       if (n.grid && n.grid.visible !== false) drawGrid(ctx, 0, 0, w, h, n.grid);
     } else if (n.type === 'rect') {
-      drawShadows(ctx, 0, 0, w, h, n.radius, n.shadows);
+      drawShadows(ctx, 0, 0, w, h, n.radius, n.shadows, doc);
       roundedPath(ctx, 0, 0, w, h, n.radius);
       ctx.save(); ctx.clip();
       drawPaints(ctx, 0, 0, w, h, n.fills, doc);
       ctx.restore();
-      drawStroke(ctx, 0, 0, w, h, n.radius, n.stroke);
+      drawStroke(ctx, 0, 0, w, h, n.radius, n.stroke, doc);
     } else if (n.type === 'ellipse') {
-      drawShadows(ctx, 0, 0, w, h, null, n.shadows);
+      drawShadows(ctx, 0, 0, w, h, null, n.shadows, doc);
       const sweep = n.arcSweep == null ? 360 : n.arcSweep;
       const start = ((n.arcStart || 0) * Math.PI) / 180;
       const end = start + (sweep * Math.PI) / 180;
@@ -457,7 +456,7 @@
       drawPaints(ctx, 0, 0, w, h, n.fills, doc);
       ctx.restore();
       if (n.stroke && n.stroke.visible) {
-        const { color, opacity } = resolvedColor(n.stroke, '#000000');
+        const { color, opacity } = resolvedColor(doc, n.stroke, '#000000');
         ctx.save();
         ctx.globalAlpha = opacity * (ctx.globalAlphaBase ?? 1);
         ctx.strokeStyle = M.rgbaCss(color, 1);
@@ -479,18 +478,23 @@
         ctx.restore();
       }
     } else if (n.type === 'line') {
+      const lineWidth = Math.max(0, Number(n.stroke && n.stroke.width) || 0);
+      if (!n.stroke || n.stroke.visible === false || lineWidth <= 0) {
+        ctx.restore();
+        return;
+      }
       ctx.save();
-      const { color, opacity } = resolvedColor(n.stroke, '#000000');
+      const { color, opacity } = resolvedColor(doc, n.stroke, '#000000');
       ctx.globalAlpha = opacity * (ctx.globalAlphaBase ?? 1);
       ctx.strokeStyle = M.rgbaCss(color, 1);
-      ctx.lineWidth = n.stroke.width || 1;
+      ctx.lineWidth = lineWidth;
       applyStrokeStyle(ctx, n.stroke);
       ctx.beginPath();
       ctx.moveTo(0, h/2);
       ctx.lineTo(w, h/2);
       ctx.stroke();
       if (n.arrowEnd) {
-        const len = Math.max(10, (n.stroke.width || 1) * 5);
+        const len = Math.max(10, lineWidth * 5);
         const a = Math.PI * 26 / 180;
         ctx.beginPath();
         ctx.moveTo(w, h/2);
@@ -500,7 +504,7 @@
         ctx.stroke();
       }
       if (n.arrowStart) {
-        const len = Math.max(10, (n.stroke.width || 1) * 5);
+        const len = Math.max(10, lineWidth * 5);
         const a = Math.PI * 26 / 180;
         ctx.beginPath();
         ctx.moveTo(0, h/2);
@@ -515,6 +519,12 @@
       drawText(ctx, n, doc, w, h);
     } else if (n.type === 'vector') {
       drawVector(ctx, n, doc, 0, 0, w, h);
+    }
+
+    // `Clip content` applies to descendants, not to the frame's own paint.
+    if ((n.type === 'frame' || n.type === 'instance') && n.clips) {
+      roundedPath(ctx, 0, 0, w, h, n.radius);
+      ctx.clip();
     }
 
     // Children — draw in same local transform so they inherit rotate/flip.
@@ -564,10 +574,15 @@
   }
 
   function drawText(ctx, n, doc, w, h) {
-    if (global.TextEngine && global.TextEngine.draw) return global.TextEngine.draw(ctx, n, doc, w, h);
     // The DOM textarea is the single source of pixels while inline editing.
     // Painting the canvas copy as well creates the doubled-text artifact.
+    //
+    // IMPORTANT: keep this guard before delegating to TextEngine.  The old
+    // order delegated first, making this renderer-level contract unreachable
+    // whenever the richer text engine was installed.  That was the source of
+    // the canvas + textarea double-paint visible while editing.
     if (n.id === editingTextId) return;
+    if (global.TextEngine && global.TextEngine.draw) return global.TextEngine.draw(ctx, n, doc, w, h);
     const t = n.text || {};
     ctx.save();
     ctx.globalAlpha = (ctx.globalAlphaBase ?? 1) * (n.opacity == null ? 1 : n.opacity);

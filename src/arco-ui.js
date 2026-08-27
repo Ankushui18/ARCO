@@ -116,6 +116,7 @@
       ['View', viewItems],
       ['Object', objectItems],
       ['Arrange', arrangeItems],
+      ['Help', helpItems],
     ];
     defs.forEach(([label, factory]) => {
       const b = document.createElement('button');
@@ -137,7 +138,8 @@
     modes.className = 'arco-modes';
     modes.innerHTML =
       '<button type="button" data-mode="design" class="on">Design</button>' +
-      '<button type="button" data-mode="prototype">Prototype</button>';
+      '<button type="button" data-mode="prototype">Prototype</button>' +
+      '<button type="button" data-mode="inspect">Inspect</button>';
     const center = top.querySelector('.ed-top-center') || top.querySelector('.ed-top-right');
     if (center) top.insertBefore(modes, center);
     else top.appendChild(modes);
@@ -164,7 +166,9 @@
         inp.onchange = () => {
           const f = inp.files && inp.files[0];
           if (!f) return;
-          f.arrayBuffer().then((buf) => A.openFromBytesAsync(buf, f.name, /\.pfg$/i.test(f.name) ? 'pfg' : 'fig'));
+          if (/\.pfg$/i.test(f.name)) f.arrayBuffer().then((buf) => A.openFromBytes(buf, f.name, 'pfg'));
+          else if (A.openFromFile) A.openFromFile(f);
+          else f.arrayBuffer().then((buf) => A.openFromBytesAsync(buf, f.name, 'fig'));
         };
         inp.click();
       }),
@@ -201,6 +205,16 @@
       item('View options…', '', (ev) => P && P.viewMenu()),
       '—',
       item('Present', '⇧K', () => A.startPresent && A.startPresent()),
+    ];
+  }
+
+  function helpItems() {
+    const A = global.App;
+    return [
+      item('Quick actions…', '⌘/', () => A.palette && A.palette()),
+      item('Keyboard shortcuts', '?', () => A.showShortcutsModal && A.showShortcutsModal()),
+      '—',
+      item('Getting started', '', () => A.showWelcome && A.showWelcome(true)),
     ];
   }
 

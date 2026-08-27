@@ -229,25 +229,28 @@ modes.addEventListener('click', async (e) => {
     // { ok, result?, error?, logs, sandbox: 'worker' | 'local' }.
     run(code, App) {
       if (this.workerAvailable()) return this._runWorker(code, App);
-      return this._runLocal(code, App);
+      // Never execute plugin source in the editor's own realm.  Doing so gives
+      // the plugin access to window, document, storage and every editor global.
+      // A missing Worker is therefore an unsupported environment, not a reason
+      // to silently weaken the security boundary.
+      return Promise.resolve({
+        ok: false,
+        error: 'Plugins require Web Worker support in this browser.',
+        logs: [],
+        sandbox: 'unavailable',
+      });
     },
 
     // ---------------------------------------------------------------- local
-    // Fallback for environments without Web Workers: same RPC contract,
-    // executed in the current realm (trusted-local — no hard isolation).
+    // Kept only for backwards-compatible internal callers. Public plugin
+    // execution never reaches this method; run() requires a Worker sandbox.
     _runLocal(code, App) {
-      const logs = [];
-      const penfig = this._penfigProxy((name, ...args) => this.handleRpc(App, name, args));
-      try {
-        const fn = new Function('penfig', 'console', '"use strict";\nreturn (async () => {\n' + code + '\n})();');
-        const p = fn(penfig, this._consoleStub(logs));
-        return Promise.resolve(p).then(
-          (r) => { App.markDirty(); return { ok: true, result: r == null ? 'Done.' : String(r), logs, sandbox: 'local' }; },
-          (e) => ({ ok: false, error: String(e && e.message || e), logs, sandbox: 'local' }),
-        );
-      } catch (err) {
-        return Promise.resolve({ ok: false, error: String(err && err.message || err), logs, sandbox: 'local' });
-      }
+      return Promise.resolve({
+        ok: false,
+        error: 'Unsafe local plugin execution is disabled.',
+        logs: [],
+        sandbox: 'unavailable',
+      });
     },
 
     // --------------------------------------------------------------- worker

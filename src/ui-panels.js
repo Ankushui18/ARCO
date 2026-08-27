@@ -184,7 +184,9 @@
             inp.onchange = () => {
               const f = inp.files && inp.files[0];
               if (!f) return;
-              f.arrayBuffer().then(buf => App.openFromBytesAsync(buf, f.name, /\.pfg$/i.test(f.name) ? 'pfg' : 'fig'));
+              if (/\.pfg$/i.test(f.name)) f.arrayBuffer().then(buf => App.openFromBytes(buf, f.name, 'pfg'));
+              else if (App.openFromFile) App.openFromFile(f);
+              else f.arrayBuffer().then(buf => App.openFromBytesAsync(buf, f.name, 'fig'));
             };
             inp.click();
           } else App.setTool(act);
@@ -332,11 +334,12 @@
             <button class="f-del" data-fi="${i}" title="Remove">${Ico('close',{size:10})}</button>
           </div>`;
         }
-        if (f.type === 'linear') {
+        if (f.type === 'linear' || f.type === 'radial') {
+          const gradientCss = f.type === 'radial' ? 'radial-gradient(circle' : 'linear-gradient(90deg';
           return `
           <div class="fill-row" data-fi="${i}">
-            <span class="f-grad-swatch" style="background:linear-gradient(90deg, ${(f.stops || []).map(s => s.color + ' ' + Math.round((s.pos ?? 0) * 100) + '%').join(',')})"></span>
-            <span class="f-type">Linear gradient</span>
+            <span class="f-grad-swatch" style="background:${gradientCss}, ${(f.stops || []).map(s => s.color + ' ' + Math.round((s.pos ?? 0) * 100) + '%').join(',')})"></span>
+            <span class="f-type">${f.type === 'radial' ? 'Radial' : 'Linear'} gradient</span>
             <button class="f-del" data-fi="${i}" title="Remove">${Ico('close',{size:10})}</button>
           </div>
           <div class="grad-edit" data-fi="${i}">
@@ -349,13 +352,25 @@
             <button class="mini" data-gadd>+ stop</button>
           </div>`;
         }
-        return `<div class="fill-row" data-fi="${i}"><span class="f-type">Image</span><button class="f-del" data-fi="${i}">${Ico('close',{size:10})}</button></div>`;
+        if (f.type === 'image') return `<div class="fill-row" data-fi="${i}">
+          <span class="f-type">Image</span>
+          <select data-image-mode="${i}" title="Image scaling">
+            <option value="fill" ${(f.scaleMode || 'fill') === 'fill' ? 'selected' : ''}>Fill</option>
+            <option value="fit" ${f.scaleMode === 'fit' ? 'selected' : ''}>Fit</option>
+            <option value="crop" ${f.scaleMode === 'crop' ? 'selected' : ''}>Crop</option>
+            <option value="tile" ${f.scaleMode === 'tile' ? 'selected' : ''}>Tile</option>
+          </select>
+          <button class="mini" data-image-crop="${i}" title="Crop image">Crop</button>
+          <button class="f-del" data-fi="${i}">${Ico('close',{size:10})}</button>
+        </div>`;
+        return `<div class="fill-row" data-fi="${i}"><span class="f-type">${f.type || 'Unknown'} fill</span><button class="f-del" data-fi="${i}">${Ico('close',{size:10})}</button></div>`;
       }).join('');
       return `
         <section class="ins-sec">
           <div class="ins-head"><span>Fills</span><span class="ins-head-btns">
             <button class="mini" data-act="add-solid" title="Solid fill">+ ${Ico('fill_swatch',{size:12})}</button>
             <button class="mini" data-act="add-grad" title="Linear gradient">+ ${Ico('shadow',{size:12})}</button>
+            <button class="mini" data-act="add-radial" title="Radial gradient">+ R</button>
           </span></div>
           ${rows || '<div class="ph sm">No fills</div>'}
         </section>`;
@@ -1005,6 +1020,34 @@
       const page = App.page;
       const doc = App.doc;
       const commit = (fn) => { App.history.begin(doc); fn(); App.history.end(doc); App.markDirty(); };
+      // Continuous inspector gestures (sliders and native color pickers) are
+      // one undoable operation. Re-rendering the inspector during `input`
+      // removes the active control from the DOM and can close the color picker
+      // after its first movement, which looked like frame fills did not work.
+      const bindLive = (input, apply, sync) => {
+        let active = false;
+        const begin = () => {
+          if (active) return;
+          active = true;
+          App.history.begin(doc);
+        };
+        const update = () => {
+          begin();
+          apply();
+          if (sync) sync();
+          App.markDirty();
+        };
+        const finish = () => {
+          if (!active) return;
+          active = false;
+          App.history.end(doc);
+        };
+        input.addEventListener('pointerdown', begin);
+        input.addEventListener('input', update);
+        input.addEventListener('change', () => { if (!active) update(); finish(); });
+        input.addEventListener('blur', finish);
+      };
+      const fillTargets = (index) => nodes.filter((x) => x.fills && x.fills[index]);
 
       // Precision stepping for every numeric inspector field.
       // Arrow = normal step, Shift = 10×, Alt = 0.1×.
@@ -1144,10 +1187,9 @@
       }));
       // opacity
       const op = el.querySelector('[data-act="opacity"]');
-      if (op) op.addEventListener('input', () => {
-        commit(() => { for (const x of nodes) x.opacity = op.value / 100; });
-        const lab = el.querySelector('#op-val'); if (lab) lab.textContent = op.value + '%';
-      });
+      if (op) bindLive(op,
+        () => { for (const x of nodes) x.opacity = op.value / 100; },
+        () => { const lab = el.querySelector('#op-val'); if (lab) lab.textContent = op.value + '%'; });
       // rotation (degrees)
       const rotInp = el.querySelector('[data-act="rot-deg"]');
       if (rotInp) rotInp.addEventListener('change', () => {
@@ -1165,17 +1207,30 @@
         commit(() => { n.radius[i] = v; if (inp.dataset.all) n.radius = [v, v, v, v]; P.refreshInspector(); });
       }));
       // fills
-      el.querySelectorAll('.f-color').forEach(inp => inp.addEventListener('input', () => {
+      el.querySelectorAll('.f-color').forEach(inp => bindLive(inp, () => {
         const i = +inp.dataset.fi;
-        commit(() => { n.fills[i].color = inp.value; if (n.type === 'text') n.text._fillSync = true; P.refreshInspector(); });
+        for (const x of fillTargets(i)) {
+          x.fills[i].color = inp.value;
+          x.fills[i].token = null;
+          if (x.type === 'text' && x.text) x.text._fillSync = true;
+        }
+      }, () => {
+        const hex = inp.closest('.fill-row') && inp.closest('.fill-row').querySelector('.f-hex');
+        if (hex) hex.value = M.normHex(inp.value);
       }));
       el.querySelectorAll('.f-hex').forEach(inp => inp.addEventListener('change', () => {
         const i = +inp.dataset.fi;
-        commit(() => { n.fills[i].color = M.normHex(inp.value); P.refreshInspector(); });
+        commit(() => {
+          const color = M.normHex(inp.value);
+          inp.value = color;
+          for (const x of fillTargets(i)) { x.fills[i].color = color; x.fills[i].token = null; }
+          const picker = inp.closest('.fill-row') && inp.closest('.fill-row').querySelector('.f-color');
+          if (picker) picker.value = color;
+        });
       }));
-      el.querySelectorAll('.f-op').forEach(inp => inp.addEventListener('input', () => {
+      el.querySelectorAll('.f-op').forEach(inp => bindLive(inp, () => {
         const i = +inp.dataset.fi;
-        commit(() => { n.fills[i].opacity = inp.value / 100; });
+        for (const x of fillTargets(i)) x.fills[i].opacity = inp.value / 100;
       }));
       el.querySelectorAll('.f-token').forEach(inp => inp.addEventListener('change', () => {
         const i = +inp.dataset.fi;
@@ -1183,24 +1238,29 @@
           const f = n.fills[i]; f.token = inp.value || null;
           const v = T.getValue(doc, f.token, doc.vars.defaultMode);
           if (typeof v === 'string') f.color = v;
-          if (n.stroke) { n.stroke.token = inp.value || null; if (typeof v === 'string') n.stroke.color = v; }
-          if (n.text) n.text.token = inp.value || null;
           P.refreshInspector();
         });
       }));
       el.querySelectorAll('.f-del').forEach(b => b.addEventListener('click', () => {
-        commit(() => { n.fills.splice(+b.dataset.fi, 1); P.refreshInspector(); });
+        commit(() => {
+          const i = +b.dataset.fi;
+          for (const x of nodes) if (x.fills && x.fills[i]) x.fills.splice(i, 1);
+          P.refreshInspector();
+        });
       }));
       // gradient stops
-      const grad = el.querySelector('.grad-edit');
-      if (grad) {
+      el.querySelectorAll('.grad-edit').forEach((grad) => {
         const fi = +grad.dataset.fi;
         const f = n.fills[fi];
-        grad.querySelectorAll('[data-gs]').forEach(inp => inp.addEventListener('input', () => {
-          commit(() => { f.stops[+inp.dataset.gs].color = inp.value; P.refreshInspector(); });
+        if (!f || !f.stops) return;
+        grad.querySelectorAll('[data-gs]').forEach(inp => bindLive(inp, () => {
+          const si = +inp.dataset.gs;
+          for (const x of fillTargets(fi)) if (x.fills[fi].stops && x.fills[fi].stops[si]) x.fills[fi].stops[si].color = inp.value;
         }));
-        grad.querySelectorAll('[data-gp]').forEach(inp => inp.addEventListener('input', () => {
-          commit(() => { f.stops[+inp.dataset.gp].pos = Math.max(0, Math.min(100, +inp.value)) / 100; });
+        grad.querySelectorAll('[data-gp]').forEach(inp => bindLive(inp, () => {
+          const si = +inp.dataset.gp;
+          const pos = Math.max(0, Math.min(100, +inp.value)) / 100;
+          for (const x of fillTargets(fi)) if (x.fills[fi].stops && x.fills[fi].stops[si]) x.fills[fi].stops[si].pos = pos;
         }));
         grad.querySelectorAll('[data-gdel]').forEach(b => b.addEventListener('click', () => {
           commit(() => { if (f.stops.length > 1) { f.stops.splice(+b.dataset.gdel, 1); P.refreshInspector(); } });
@@ -1209,24 +1269,49 @@
         if (add) add.addEventListener('click', () => {
           commit(() => { f.stops.push({ color: '#ffffff', opacity: 1, pos: 1 }); P.refreshInspector(); });
         });
-      }
+      });
+      el.querySelectorAll('[data-image-mode]').forEach((sel) => sel.addEventListener('change', () => commit(() => {
+        const i = +sel.dataset.imageMode;
+        for (const x of fillTargets(i)) x.fills[i].scaleMode = sel.value;
+      })));
+      el.querySelectorAll('[data-image-crop]').forEach((b) => b.addEventListener('click', () => {
+        if (nodes.length === 1 && App.beginImageCrop) App.beginImageCrop(n);
+        else App.toast('Select one image layer to crop');
+      }));
       // add fills
       const addSolid = el.querySelector('[data-act="add-solid"]');
       if (addSolid) addSolid.addEventListener('click', () => {
-        commit(() => { n.fills.unshift({ type: 'solid', color: '#ffffff', opacity: 1, token: null }); P.refreshInspector(); });
+        commit(() => { for (const x of nodes) { x.fills = x.fills || []; x.fills.unshift({ type: 'solid', color: '#ffffff', opacity: 1, token: null }); } P.refreshInspector(); });
       });
       const addGrad = el.querySelector('[data-act="add-grad"]');
       if (addGrad) addGrad.addEventListener('click', () => {
         commit(() => {
-          n.fills.unshift({ type: 'linear', from: { x: 0, y: 0 }, to: { x: 1, y: 1 }, stops: [{ color: '#0d99ff', opacity: 1, pos: 0, token: null }, { color: '#a259ff', opacity: 1, pos: 1, token: null }], opacity: 1, token: null });
+          for (const x of nodes) { x.fills = x.fills || []; x.fills.unshift({ type: 'linear', from: { x: 0, y: 0 }, to: { x: 1, y: 1 }, stops: [{ color: '#0d99ff', opacity: 1, pos: 0, token: null }, { color: '#a259ff', opacity: 1, pos: 1, token: null }], opacity: 1, token: null }); }
           P.refreshInspector();
         });
       });
+      const addRadial = el.querySelector('[data-act="add-radial"]');
+      if (addRadial) addRadial.addEventListener('click', () => commit(() => {
+        for (const x of nodes) { x.fills = x.fills || []; x.fills.unshift({ type: 'radial', from: { x: .5, y: .5 }, to: { x: .5, y: .5 }, r: .5, stops: [{ color: '#ffffff', opacity: 1, pos: 0, token: null }, { color: '#0d99ff', opacity: 1, pos: 1, token: null }], opacity: 1, token: null }); }
+        P.refreshInspector();
+      }));
       // stroke
       const so = el.querySelector('[data-act="stroke-on"]');
-      if (so) so.addEventListener('change', () => commit(() => { n.stroke.visible = so.checked; P.refreshInspector(); }));
+      if (so) so.addEventListener('change', () => commit(() => {
+        for (const x of nodes) {
+          x.stroke = x.stroke || { color: '#000000', width: 1, opacity: 1, align: 'inside' };
+          x.stroke.visible = so.checked;
+        }
+        P.refreshInspector();
+      }));
       const sc = el.querySelector('[data-act="stroke-color"]');
-      if (sc) sc.addEventListener('input', () => commit(() => { n.stroke.color = sc.value; P.refreshInspector(); }));
+      if (sc) bindLive(sc, () => {
+        for (const x of nodes) {
+          x.stroke = x.stroke || {};
+          x.stroke.color = sc.value;
+          x.stroke.token = null;
+        }
+      });
       const st = el.querySelector('[data-act="stroke-token"]');
       if (st) st.addEventListener('change', () => commit(() => {
         n.stroke.token = st.value || null;
@@ -1235,7 +1320,13 @@
         P.refreshInspector();
       }));
       const sw = el.querySelector('[data-act="stroke-width"]');
-      if (sw) sw.addEventListener('input', () => commit(() => { n.stroke.width = Math.max(0, +sw.value || 0); }));
+      if (sw) bindLive(sw, () => {
+        const width = Math.max(0, Number(sw.value) || 0);
+        for (const x of nodes) {
+          x.stroke = x.stroke || {};
+          x.stroke.width = width;
+        }
+      });
       const sa = el.querySelector('[data-act="stroke-align"]');
       if (sa) sa.addEventListener('change', () => commit(() => { n.stroke.align = sa.value; }));
       const scap = el.querySelector('[data-act="stroke-cap"]');
