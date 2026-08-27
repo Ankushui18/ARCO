@@ -158,15 +158,24 @@
       if (fillHex) { const [r, g, b] = hex2rgb(fillHex); out.push(r, g, b, 'rg'); out.push('f'); }
       if (st && st.width > 0) { const [r, g, b] = hex2rgb(st.color); out.push(r, g, b, 'RG', r3(st.width), 'w'); out.push('S'); }
     } else if (n.type === 'line') {
-      const [r, g, b] = hex2rgb(st ? st.color : '#000000');
-      out.push(r, g, b, 'RG', r3(st && st.width ? st.width : 1), 'w',
-        r3(x), r3(H - y - h / 2), 'm', r3(x + w), r3(H - y - h / 2), 'l', 'S');
+      if (st && st.width > 0) {
+        const [r, g, b] = hex2rgb(st.color);
+        out.push(r, g, b, 'RG', r3(st.width), 'w',
+          r3(x), r3(H - y - h / 2), 'm', r3(x + w), r3(H - y - h / 2), 'l', 'S');
       if (n.arrowEnd) {
-        const len = Math.max(10, (st && st.width ? st.width : 1) * 5);
+        const len = Math.max(10, st.width * 5);
         const a = Math.PI * 26 / 180;
         const ex = x + w, ey = H - y - h / 2;
         out.push(r3(ex), r3(ey), 'm', r3(ex - len * Math.cos(a)), r3(ey - len * Math.sin(a)), 'l', 'S');
         out.push(r3(ex), r3(ey), 'm', r3(ex - len * Math.cos(a)), r3(ey + len * Math.sin(a)), 'l', 'S');
+      }
+      if (n.arrowStart) {
+        const len = Math.max(10, st.width * 5);
+        const a = Math.PI * 26 / 180;
+        const sx = x, sy = H - y - h / 2;
+        out.push(r3(sx), r3(sy), 'm', r3(sx + len * Math.cos(a)), r3(sy - len * Math.sin(a)), 'l', 'S');
+        out.push(r3(sx), r3(sy), 'm', r3(sx + len * Math.cos(a)), r3(sy + len * Math.sin(a)), 'l', 'S');
+      }
       }
     } else if (n.type === 'text' && n.text) {
       textOps(n, x, y, H, out);

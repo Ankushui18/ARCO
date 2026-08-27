@@ -70,7 +70,14 @@
       styleId: null,          // text style id (doc.styles.text)
       fillStyleId: null,      // paint style id (doc.styles.paint)
     };
-    if (type === 'frame') { n.w = opts.w || 200; n.h = opts.h || 200; n.fills = []; }
+    // Figma frame-tool parity: a newly drawn frame is an opaque white canvas.
+    // Group-like frames explicitly clear this fill in group/frame-selection
+    // workflows, so those continue to behave as transparent containers.
+    if (type === 'frame') {
+      n.w = opts.w || 200;
+      n.h = opts.h || 200;
+      n.fills = [{ type: 'solid', color: '#ffffff', opacity: 1, token: null, visible: true }];
+    }
     if (type === 'rect') { n.w = opts.w || 100; n.h = opts.h || 100; n.fills = [{ type: 'solid', color: '#d9d9d9', opacity: 1, token: null }]; }
     if (type === 'ellipse') { n.w = opts.w || 100; n.h = opts.h || 100; n.fills = [{ type: 'solid', color: '#d9d9d9', opacity: 1, token: null }]; }
     if (type === 'line') { n.w = opts.w != null ? opts.w : 200; n.h = opts.h != null ? opts.h : 1; n.fills = []; n.stroke = { color: '#000000', width: 2, opacity: 1, align: 'inside', token: null, visible: true }; }
