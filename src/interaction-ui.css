@@ -1,0 +1,136 @@
+/* interaction-ui.css — states, selection toolbar, palette, menus, keys */
+
+/* ========== STATES ========== */
+#view-editor.arco button:disabled,
+#view-editor.arco .tool:disabled {
+  opacity: .35; pointer-events: none;
+}
+#view-editor.arco .tool:focus-visible,
+#view-editor.arco .arco-ib:focus-visible,
+#view-editor.arco .arco-menu-btn:focus-visible,
+#view-editor.arco .ly-row:focus-visible,
+#view-editor.arco .ed-ltab:focus-visible {
+  outline: 2px solid #0d99ff;
+  outline-offset: 1px;
+}
+#view-editor.arco .ly-row:active { background: rgba(255,255,255,.1); }
+#view-editor.arco .arco-ib:active { background: rgba(255,255,255,.12); }
+
+/* ========== SELECTION TOOLBAR ========== */
+.arco-selbar {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 36px;
+  padding: 4px;
+  background: #2c2c2c;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  pointer-events: auto;
+}
+.arco-selbar[hidden] { display: none !important; }
+.arco-ib {
+  width: 28px; height: 28px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; border-radius: 6px;
+  color: #e6e6e6; cursor: pointer;
+}
+.arco-ib:hover { background: rgba(255,255,255,.08); color: #fff; }
+.arco-ib.on { background: #0d99ff; color: #fff; }
+.arco-ib .icon { width: 14px; height: 14px; }
+.arco-sep {
+  width: 1px; height: 16px; margin: 0 3px;
+  background: rgba(255,255,255,.12);
+  display: inline-block;
+}
+
+/* ========== SMART GUIDES ========== */
+/* color is painted on canvas; labels come from interaction-ui.js */
+
+/* ========== PALETTE ========== */
+.arco-pal-back { background: rgba(0,0,0,.45) !important; }
+.arco-pal,
+.pf-palette.arco-pal {
+  width: 520px !important;
+  background: #2c2c2c !important;
+  border: 1px solid rgba(255,255,255,.1) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 16px 48px rgba(0,0,0,.55) !important;
+}
+.arco-pal .pf-palette-in,
+.pf-palette.arco-pal .pf-palette-in {
+  height: 44px; font-size: 13px; padding-left: 40px;
+  background: #2c2c2c !important;
+  border-bottom: 1px solid #1e1e1e !important;
+  color: #fff !important;
+}
+.arco-pal-h {
+  height: 24px !important; padding: 8px 12px 2px !important;
+  font-size: 10px !important; font-weight: 600 !important;
+  color: #8d8d8d !important; letter-spacing: .04em;
+  text-transform: uppercase; cursor: default !important;
+}
+.arco-pal-h:hover { background: none !important; }
+.pf-palette-list li { height: 32px; font-size: 12px; border-radius: 6px; }
+.pf-palette-list li:hover { background: rgba(255,255,255,.08); }
+.pf-palette-list li.active { background: #0d99ff !important; color: #fff; }
+.pf-pal-hint {
+  margin-left: auto; font-size: 10px; color: #8d8d8d;
+  font-variant: tabular-nums;
+}
+
+/* ========== CONTEXT MENU ========== */
+.pf-menu.arco-ctx {
+  min-width: 220px;
+  padding: 4px !important;
+  background: #2c2c2c !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  border-radius: 8px !important;
+}
+.pf-menu.arco-ctx button {
+  height: 28px; padding: 0 10px;
+  font-size: 12px; border-radius: 4px; color: #fff;
+  display: flex; align-items: center; gap: 8px; width: 100%;
+}
+.pf-menu.arco-ctx button:hover { background: #0d99ff !important; }
+.pf-menu.arco-ctx button:focus-visible { outline: 2px solid #0d99ff; }
+.pf-menu.arco-ctx .kbd { margin-left: auto; color: #8d8d8d; font-size: 10px; }
+.pf-menu.arco-ctx hr { border: 0; border-top: 1px solid #1e1e1e; margin: 4px 0; }
+
+/* ========== SHORTCUTS ========== */
+.arco-sc-back { background: rgba(0,0,0,.5); }
+.arco-sc {
+  background: #2c2c2c !important;
+  border: 1px solid rgba(255,255,255,.1) !important;
+  border-radius: 10px !important;
+  max-width: 760px;
+}
+.arco-sc h3 { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
+.arco-sc-q {
+  width: 100%; height: 32px; margin: 0 0 12px;
+  padding: 0 10px; border: 0; border-radius: 6px;
+  background: #1e1e1e; color: #fff; font-size: 12px;
+}
+.arco-sc-q:focus { outline: 1px solid #0d99ff; }
+.arco-sc .sc-group {
+  background: #252525 !important;
+  border: 1px solid #1e1e1e !important;
+}
+.arco-sc .sc-group h4 {
+  font-size: 10px; letter-spacing: .06em; color: #8d8d8d;
+}
+.arco-sc .sc-key, .arco-sc .sc-grid span:nth-child(odd) {
+  font-size: 11px; color: #fff;
+}
+.arco-sc .sc-grid span:nth-child(even) { font-size: 11px; color: #b3b3b3; }
+
+/* toast states */
+#penfig-toast {
+  background: #2c2c2c; border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px; font-size: 12px;
+}
+#penfig-toast.error { background: #3b1510; border-color: #5d251c; }
+#penfig-toast.success { background: #12301c; border-color: #1c4c2c; }

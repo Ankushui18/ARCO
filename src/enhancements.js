@@ -65,12 +65,16 @@
     function clearRecovery(){
       try{ localStorage.removeItem(RECOVERY_KEY); }catch(e){}
     }
-    function checkRecovery(){
+    async function checkRecovery(){
       let snap = null;
       try{ snap = JSON.parse(localStorage.getItem(RECOVERY_KEY)||'null'); }catch(e){ return; }
       if (!snap || !snap.doc) return;
       const ageMin = Math.round((Date.now() - snap.at)/60000);
-      if (!confirm(`Penfig recovered an unsaved document from ${ageMin} minute(s) ago: "${snap.name}". Restore it?\n\n(Cancel discards the recovery snapshot.)`)){
+      const ok = await Dialogs.confirm(
+        `Penfig recovered an unsaved document from ${ageMin} minute(s) ago: "${snap.name}". Restore it?\n\n(Cancel discards the recovery snapshot.)`,
+        { okLabel: 'Restore' }
+      );
+      if (!ok){
         clearRecovery(); return;
       }
       try{
@@ -81,7 +85,7 @@
         App.toast(`Recovered "${doc.name}" from ${ageMin}m ago`, 5000, 'success');
         clearRecovery();
       }catch(e){
-        alert('Recovery failed: '+e.message);
+        await Dialogs.alert('Recovery failed: '+e.message, { error: true });
         clearRecovery();
       }
     }

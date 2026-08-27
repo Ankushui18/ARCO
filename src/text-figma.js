@@ -522,8 +522,8 @@
         if (P.refreshInspector) P.refreshInspector();
       }));
       const nw = pop.querySelector('[data-new]');
-      if (nw) nw.addEventListener('click', () => {
-        const name = prompt('Style name', n.name || 'Text style');
+      if (nw) nw.addEventListener('click', async () => {
+        const name = await Dialogs.prompt('Style name', n.name || 'Text style');
         if (!name) return;
         commit(() => S.makeTextStyle(App.doc, name.trim(), n));
         pop.remove();

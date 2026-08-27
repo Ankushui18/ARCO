@@ -887,7 +887,7 @@
       // (Resize along one axis still works because handleAt detects edge
       // zones; we just don't paint edge squares.)
       ctx.fillStyle = '#fff'; ctx.strokeStyle = FIGMA_BLUE; ctx.lineWidth = 1;
-      for (const p of [c0, c1, c2, c3]) drawHandle(ctx, p, 7);
+      for (const p of [c0, c1, c2, c3]) drawHandle(ctx, p, 5);
 
       // Size pill — blue rounded rect below the outward-bottom edge.
       const nBot = outwardNormal(c2, c3, center);
@@ -943,7 +943,7 @@
         [u.x, u.y], [u.x+u.w, u.y], [u.x+u.w, u.y+u.h], [u.x, u.y+u.h],
       ];
       ctx.fillStyle = '#fff'; ctx.strokeStyle = FIGMA_BLUE; ctx.lineWidth = 1;
-      for (const [px,py] of pts) drawHandle(ctx, {x:px,y:py}, 7);
+      for (const [px,py] of pts) drawHandle(ctx, {x:px,y:py}, 5);
       ctx.textBaseline = 'alphabetic';
     }
     ctx.restore();
@@ -984,7 +984,7 @@
     const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.globalAlpha = .72;
-    ctx.strokeStyle = '#8f76ff';
+    ctx.strokeStyle = '#0d99ff';
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
@@ -1098,7 +1098,7 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.translate(view.ox, view.oy);
     ctx.scale(view.zoom, view.zoom);
-    ctx.strokeStyle = '#eb1478';
+    ctx.strokeStyle = '#f24ce0';
     ctx.lineWidth = 1 / view.zoom;
     for (const g of guides) {
       ctx.beginPath();

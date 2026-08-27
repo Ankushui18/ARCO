@@ -1015,6 +1015,27 @@ body.pan-ready #ed-canvas { touch-action: pan-x pan-y; }
 .pf-font-btn:hover { border-color: #555; background: #222; }
 .pf-font-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ---- Shared confirm/prompt/alert dialogs (dialogs.js) ---- */
+.pf-dialog-card { width: 380px; padding: 0; }
+.pf-dialog-head { padding: 16px 20px 0; margin-bottom: 4px; }
+.pf-dialog-body { padding: 10px 20px 4px; }
+.pf-dialog-msg { font-size: 12.5px; line-height: 1.5; color: var(--txt-mid, #bbb); margin: 0; white-space: pre-line; }
+.pf-dialog-input {
+  width: 100%; margin-top: 8px; background: #1a1a1a; border: 1px solid #3a3a3a;
+  color: #fff; font-size: 13px; padding: 7px 9px; border-radius: var(--r2, 6px);
+  font-family: inherit; outline: none; box-sizing: border-box;
+}
+.pf-dialog-input:focus { border-color: var(--accent, #0d99ff); box-shadow: 0 0 0 3px rgba(13,153,255,.22); }
+.pf-dialog-foot { padding: 12px 20px 18px; }
+.pf-dialog-foot .ed-btn-primary { background: var(--accent, #0d99ff); border-color: transparent; color: #fff; }
+.pf-dialog-foot .ed-btn-primary:hover { background: #2ba6ff; }
+.pf-dialog-foot .ed-btn-danger { background: var(--danger, #f24822); border-color: transparent; color: #fff; }
+.pf-dialog-foot .ed-btn-danger:hover { background: #ff5c37; }
+.pf-dialog-backdrop.pf-dialog-closing { animation: fade-out .09s ease forwards; }
+.pf-dialog-backdrop.pf-dialog-closing .pf-dialog-card { animation: modal-out .09s ease forwards; }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes modal-out { to { opacity: 0; transform: scale(.97); } }
+
 /* ---- Import summary ---- */
 .pf-sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin: 8px 0 10px; font-size: 12px; }
 .pf-sum-row { display:flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #222; color: #bbb; }

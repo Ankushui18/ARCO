@@ -211,8 +211,12 @@
   }
 
   // Convert Figma's 2×3 matrix (maps local origin = top-left) into Penfig's
-  // parent-local x/y + center-pivot rotation. Identity matrices stay a
-  // simple translation so we never disturb unrotated UI files.
+  // parent-local x/y + center-pivot rotation. The local box's center
+  // (hw,hh) must map, under this matrix, to the world center (x+hw,y+hh) —
+  // that identity holds regardless of rotation/flip, so x/y is solved
+  // directly from the matrix entries rather than reconstructed from a
+  // separately-decoded rotation angle (a prior version did that and had a
+  // sign error that made every rotated node drift on import).
   function applyFigTransform(n, tr) {
     if (!tr) { n.x = 0; n.y = 0; return; }
     let a = tr.m00 != null ? tr.m00 : 1;
@@ -225,20 +229,32 @@
     const sy = Math.hypot(b, d) || 1;
     if (Math.abs(sx - 1) > 1e-3) { n.w = Math.max(0.01, (n.w || 1) * sx); a /= sx; c /= sx; }
     if (Math.abs(sy - 1) > 1e-3) { n.h = Math.max(0.01, (n.h || 1) * sy); b /= sy; d /= sy; }
+    const hw = (n.w || 0) / 2, hh = (n.h || 0) / 2;
+    n.x = a * hw + b * hh + e - hw;
+    n.y = c * hw + d * hh + f - hh;
     const det = a * d - b * c;
     if (det < -1e-6) { n.flipH = true; a = -a; c = -c; }
     const rot = Math.atan2(c, a);
-    if (Math.abs(rot) > 1e-4) {
-      n.rotation = rot;
-      const cx = (n.w || 0) / 2, cy = (n.h || 0) / 2;
-      const cos = Math.cos(rot), sin = Math.sin(rot);
-      n.x = e + cx - (cos * cx - sin * cy);
-      n.y = f + cy - (sin * cx + cos * cy);
-    } else {
-      n.x = e;
-      n.y = f;
-    }
+    if (Math.abs(rot) > 1e-4) n.rotation = rot;
   }
+
+  // Inverse of applyFigTransform: Penfig node -> Figma transform matrix.
+  // Kept as the single source of truth for both directions so a future
+  // change to one can't silently drift out of sync with the other (see
+  // the position round-trip regression covered by test-fig-transform.js).
+  function figTransformFor(n) {
+    const rot = n.rotation || 0;
+    const fh = n.flipH ? -1 : 1, fv = n.flipV ? -1 : 1;
+    const cos = Math.cos(rot), sin = Math.sin(rot);
+    const cx = (n.w || 0) / 2, cy = (n.h || 0) / 2;
+    return {
+      m00: cos * fh, m01: -sin * fv,
+      m02: (n.x || 0) + cx - cos * fh * cx + sin * fv * cy,
+      m10: sin * fh, m11: cos * fv,
+      m12: (n.y || 0) + cy - sin * fh * cx - cos * fv * cy,
+    };
+  }
+
 
   function paintTypeOf(p) {
     const t = p && p.type;
@@ -788,18 +804,7 @@
     // reference field is overriddenSymbolID, not mainComponentGuid).
     out.type = (n.type === 'frame' && n.isComponent) ? 'SYMBOL' : (typeMap[n.type] || 'FRAME');
     out.size = { x: n.w, y: n.h };
-    {
-      const rot = n.rotation || 0;
-      const fh = n.flipH ? -1 : 1, fv = n.flipV ? -1 : 1;
-      const cos = Math.cos(rot), sin = Math.sin(rot);
-      const cx = (n.w || 0) / 2, cy = (n.h || 0) / 2;
-      out.transform = {
-        m00: cos * fh, m01: -sin * fv,
-        m02: (n.x || 0) + cx - cos * fh * cx + sin * fv * cy,
-        m10: sin * fh, m11: cos * fv,
-        m12: (n.y || 0) + cy - sin * fh * cx - cos * fv * cy,
-      };
-    }
+    out.transform = figTransformFor(n);
     out.visible = n.visible;
     out.opacity = n.opacity;
     out.blendMode = (n.blend || 'normal').toUpperCase();
@@ -993,5 +998,5 @@
     return { textValue: String(val) };
   }
 
-  global.FigConv = { importFig, exportFig, bytesToB64, u8ToHex };
+  global.FigConv = { importFig, exportFig, bytesToB64, u8ToHex, applyFigTransform, figTransformFor };
 })(window);

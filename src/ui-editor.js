@@ -326,8 +326,8 @@
       requestAnimationFrame(() => this.showWelcome(false));
       // double-click page name → rename
       const pn = ed.querySelector('#ed-pagename');
-      if (pn) pn.addEventListener('dblclick', () => {
-        const name = prompt('Rename page', this.page.name);
+      if (pn) pn.addEventListener('dblclick', async () => {
+        const name = await Dialogs.prompt('Rename page', this.page.name);
         if (name && name.trim()) { this.page.name = name.trim(); this.renderPagename(); global.Panels.renderPages(); this.markDirty(); }
       });
     },
@@ -393,8 +393,8 @@
         global.Panels.refreshInspector();
       }));
       const add = el.querySelector('#mode-add');
-      if (add) add.addEventListener('click', () => {
-        const name = prompt('New mode name', 'Mode ' + (doc.vars.modes.length + 1));
+      if (add) add.addEventListener('click', async () => {
+        const name = await Dialogs.prompt('New mode name', 'Mode ' + (doc.vars.modes.length + 1));
         if (!name) return;
         this.history.begin(this.doc);
         T.addMode(doc, name);
@@ -683,7 +683,7 @@
     supportsImportWorker() {
       return typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && location.protocol !== 'file:';
     },
-    openFromBytesAsync(bytes, name, kind) {
+    async openFromBytesAsync(bytes, name, kind) {
       // Tiering:
       //   <10 MB  → synchronous main thread (no overhead)
       //   10–150 MB → worker with progress UI + cancel
@@ -696,9 +696,12 @@
       }
       if (size >= WARN) {
         const mb = Math.round(size/MB);
-        if (!confirm(
+        const ok = await Dialogs.confirm(
           'This .fig file is ' + mb + ' MB. Importing it may use significant memory and take a while.\n\n' +
-          'Penfig will import it in the background with a progress bar. Continue?')) return;
+          'Penfig will import it in the background with a progress bar. Continue?',
+          { okLabel: 'Import' }
+        );
+        if (!ok) return;
       }
       this._startImportWorker(bytes, name, kind);
     },
@@ -1072,14 +1075,15 @@
       if (this._lastClick && (now - this._lastClick.t) > 600) this._lastClick = null;
 
       if (this.tool === 'comment') {
-        const text = prompt('Add a comment:', '');
-        if (text) {
-          this.history.begin(this.doc);
-          global.Eco.Comments.add(this.doc, this.page.id, p.x, p.y, text.trim(), global.Collab.self ? global.Collab.self.name : 'You');
-          this.history.end(this.doc);
-          this.renderPins();
-          this.markDirty();
-        }
+        Dialogs.prompt('Add a comment:', '').then((text) => {
+          if (text) {
+            this.history.begin(this.doc);
+            global.Eco.Comments.add(this.doc, this.page.id, p.x, p.y, text.trim(), global.Collab.self ? global.Collab.self.name : 'You');
+            this.history.end(this.doc);
+            this.renderPins();
+            this.markDirty();
+          }
+        });
         return;
       }
       if (this.tool === 'hand') {

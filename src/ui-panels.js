@@ -70,10 +70,10 @@
           } else App.setSel([id]);
         });
       });
-      el.querySelectorAll('[data-rename]').forEach(sp => sp.addEventListener('dblclick', () => {
+      el.querySelectorAll('[data-rename]').forEach(sp => sp.addEventListener('dblclick', async () => {
         const id = sp.dataset.rename;
         const n = page.nodes[id];
-        const name = prompt('Rename layer', n.name);
+        const name = await Dialogs.prompt('Rename layer', n.name);
         if (name) { App.history.begin(App.doc); n.name = name; App.history.end(App.doc); P.refreshLayers(); App.markDirty(); }
       }));
       el.querySelectorAll('[data-caret]').forEach(c => c.addEventListener('click', (e) => {
@@ -116,19 +116,20 @@
         App.renderPagename && App.renderPagename();
         P.renderPages(); P.refreshLayers(); P.refreshInspector(); App.markDirty();
       }));
-      el.querySelectorAll('[data-pgdel]').forEach(b => b.addEventListener('click', (e) => {
+      el.querySelectorAll('[data-pgdel]').forEach(b => b.addEventListener('click', async (e) => {
         e.stopPropagation();
         const i = +b.closest('.pg-row').dataset.i;
         if (doc.pages.length <= 1) { App.toast('You need at least one page'); return; }
-        if (!confirm('Delete page “' + doc.pages[i].name + '”?')) return;
+        const ok = await Dialogs.confirm('Delete page “' + doc.pages[i].name + '”?', { okLabel: 'Delete', danger: true });
+        if (!ok) return;
         doc.pages.splice(i, 1);
         if (App.pageIndex >= doc.pages.length) App.pageIndex = doc.pages.length - 1;
         App.renderPagename && App.renderPagename();
         P.renderPages(); P.refreshLayers(); P.refreshInspector(); App.markDirty();
       }));
-      el.querySelectorAll('[data-pgname]').forEach(s => s.addEventListener('dblclick', () => {
+      el.querySelectorAll('[data-pgname]').forEach(s => s.addEventListener('dblclick', async () => {
         const i = +s.dataset.pgname;
-        const name = prompt('Page name', doc.pages[i].name);
+        const name = await Dialogs.prompt('Page name', doc.pages[i].name);
         if (name) { doc.pages[i].name = name.trim(); P.renderPages(); App.renderPagename && App.renderPagename(); App.markDirty(); }
       }));
       el.querySelector('#pg-new').addEventListener('click', () => {
@@ -930,10 +931,10 @@
         P.renderAssets(); P.refreshLayers(); App.markDirty(); App.toast(`Updated ${n} instance(s) from library`);
       }));
       const linkBtn = el.querySelector('[data-llib-link]');
-      if (linkBtn) linkBtn.addEventListener('click', () => {
+      if (linkBtn) linkBtn.addEventListener('click', async () => {
         const files = M.store.all().filter(f => f.id !== doc.id && f.doc && Object.keys(f.doc.components || {}).length);
         if (!files.length) { App.toast('No other files with components to link'); return; }
-        const name = prompt('Link a local file as a component library:\n\n' + files.map((f, i) => `${i + 1}. ${f.name}`).join('\n'), '1');
+        const name = await Dialogs.prompt('Link a local file as a component library:\n\n' + files.map((f, i) => `${i + 1}. ${f.name}`).join('\n'), '1');
         const i = parseInt(name, 10) - 1;
         if (isFinite(i) && files[i]) {
           App.history.begin(doc); L.link(doc, files[i].id); App.history.end(doc);
@@ -985,17 +986,17 @@
         if (e.target.closest('[data-prename]') || e.target.closest('[data-pdel]')) return;
         commit(() => { const n = S.applyPaintStyle(doc, page, r.dataset.pstyle, selIds); App.toast(n ? `Applied to ${n} node(s)` : 'Select a node first'); });
       }));
-      el.querySelectorAll('[data-trename]').forEach(b => b.addEventListener('click', () => {
-        const st = S.getText(doc, b.dataset.trename); const nm = prompt('Style name', st.name); if (nm) commit(() => S.renameTextStyle(doc, st.id, nm.trim()));
+      el.querySelectorAll('[data-trename]').forEach(b => b.addEventListener('click', async () => {
+        const st = S.getText(doc, b.dataset.trename); const nm = await Dialogs.prompt('Style name', st.name); if (nm) commit(() => S.renameTextStyle(doc, st.id, nm.trim()));
       }));
-      el.querySelectorAll('[data-prename]').forEach(b => b.addEventListener('click', () => {
-        const st = S.getPaint(doc, b.dataset.prename); const nm = prompt('Style name', st.name); if (nm) commit(() => S.renamePaintStyle(doc, st.id, nm.trim()));
+      el.querySelectorAll('[data-prename]').forEach(b => b.addEventListener('click', async () => {
+        const st = S.getPaint(doc, b.dataset.prename); const nm = await Dialogs.prompt('Style name', st.name); if (nm) commit(() => S.renamePaintStyle(doc, st.id, nm.trim()));
       }));
       el.querySelectorAll('[data-tdel]').forEach(b => b.addEventListener('click', () => commit(() => S.deleteTextStyle(doc, b.dataset.tdel))));
       el.querySelectorAll('[data-pdel]').forEach(b => b.addEventListener('click', () => commit(() => S.deletePaintStyle(doc, b.dataset.pdel))));
-      el.querySelectorAll('[data-new]').forEach(b => b.addEventListener('click', () => {
-        if (b.dataset.new === 'text') commit(() => S.makeTextStyle(doc, prompt('Style name', 'Text style'), selText));
-        else commit(() => S.makePaintStyle(doc, prompt('Style name', 'Paint style'), selPainted));
+      el.querySelectorAll('[data-new]').forEach(b => b.addEventListener('click', async () => {
+        if (b.dataset.new === 'text') { const nm = await Dialogs.prompt('Style name', 'Text style'); if (nm) commit(() => S.makeTextStyle(doc, nm, selText)); }
+        else { const nm = await Dialogs.prompt('Style name', 'Paint style'); if (nm) commit(() => S.makePaintStyle(doc, nm, selPainted)); }
       }));
     },
 
@@ -1428,15 +1429,15 @@
         App.renderModes(); P.renderVars(); P.refreshInspector(); App.markDirty();
       }));
       const am = el.querySelector('#var-add-mode');
-      if (am) am.addEventListener('click', () => {
-        const name = prompt('New mode name', 'Mode ' + (doc.vars.modes.length + 1));
+      if (am) am.addEventListener('click', async () => {
+        const name = await Dialogs.prompt('New mode name', 'Mode ' + (doc.vars.modes.length + 1));
         if (!name) return;
         App.history.begin(doc); T.addMode(doc, name); App.history.end(doc);
         P.renderVars(); App.renderModes(); App.markDirty();
       });
       const as = el.querySelector('#var-add-set');
-      if (as) as.addEventListener('click', () => {
-        const name = prompt('New set (collection) name', 'ui');
+      if (as) as.addEventListener('click', async () => {
+        const name = await Dialogs.prompt('New set (collection) name', 'ui');
         if (!name) return;
         App.history.begin(doc); T.addSet(doc, name); App.history.end(doc);
         P.renderVars();
@@ -1491,11 +1492,11 @@
         App.history.begin(doc); T.removeVar(doc, b.dataset.vdel); App.history.end(doc);
         P.renderVars(); P.refreshInspector(); App.markDirty();
       }));
-      el.querySelectorAll('[data-vrname]').forEach(s => s.addEventListener('dblclick', () => {
+      el.querySelectorAll('[data-vrname]').forEach(s => s.addEventListener('dblclick', async () => {
         const vid = s.dataset.vrname;
         const set = doc.vars.sets.find(x => x.vars.some(v => v.id === vid));
         const v = set.vars.find(v => v.id === vid);
-        const name = prompt('Rename token', v.name);
+        const name = await Dialogs.prompt('Rename token', v.name);
         if (name) { App.history.begin(doc); v.name = name; App.history.end(doc); P.renderVars(); }
       }));
       const ds = el.querySelector('[data-va="del-set"]');
@@ -1889,7 +1890,12 @@
         if (c === 'outline') { App.sel = ids.slice(); App.outlineStrokeSel(); return; }
         if (c === 'lock') { App.history.begin(doc); selNodes.forEach(k => k.locked = !n.locked); App.history.end(doc); }
         if (c === 'hide' || c === 'show') { App.history.begin(doc); selNodes.forEach(k => k.visible = c === 'show'); App.history.end(doc); }
-        if (c === 'rename') { const nm = prompt('Rename', n.name); if (nm) { App.history.begin(doc); n.name = nm; App.history.end(doc); } }
+        if (c === 'rename') {
+          Dialogs.prompt('Rename', n.name).then((nm) => {
+            if (nm) { App.history.begin(doc); n.name = nm; App.history.end(doc); P.refreshLayers(); P.refreshInspector(); App.markDirty(); }
+          });
+          return;
+        }
         if (c === 'edit') { requestAnimationFrame(() => setTimeout(() => App.beginTextEdit(n), 16)); }
         if (c === 'del') App.deleteSel();
         if (c && c.startsWith('al-')) {

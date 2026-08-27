@@ -1,0 +1,413 @@
+/* arco-ds.css — ARCO design system. Loaded last.
+ * Tokens, type scale, spacing, controls, states, canvas-first chrome.
+ * Target: one coherent product. Not Figma. Not a pile of cards.
+ */
+
+/* ========== TOKENS ========== */
+#view-editor,
+body.arco {
+  --arco-canvas: #2c2c2c;
+  --arco-panel: #2c2c2c;
+  --arco-panel-2: #333333;
+  --arco-hover: rgba(255, 255, 255, 0.06);
+  --arco-active: rgba(255, 255, 255, 0.10);
+  --arco-selected: #0d99ff;
+  --arco-border: #1e1e1e;
+  --arco-line: rgba(255, 255, 255, 0.08);
+  --arco-text: #ffffff;
+  --arco-text-2: #e6e6e6;
+  --arco-text-3: #b3b3b3;
+  --arco-text-4: #8d8d8d;
+  --arco-accent: #0d99ff;
+  --arco-accent-2: #0b8ce6;
+  --arco-danger: #f24822;
+  --arco-success: #14ae5c;
+  --arco-warn: #ffcd29;
+  --arco-input: #1e1e1e;
+  --arco-font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --arco-10: 10px;
+  --arco-11: 11px;
+  --arco-12: 12px;
+  --arco-13: 13px;
+  --arco-14: 14px;
+  --arco-16: 16px;
+  --s-4: 4px;
+  --s-6: 6px;
+  --s-8: 8px;
+  --s-12: 12px;
+  --s-16: 16px;
+  --s-20: 20px;
+  --s-24: 24px;
+  --s-32: 32px;
+  --h-20: 20px;
+  --h-28: 28px;
+  --h-32: 32px;
+  --h-36: 36px;
+  --accent: #0d99ff;
+  --chrome: #2c2c2c;
+  --txt: #ffffff;
+}
+
+#view-editor.arco {
+  font-family: var(--arco-font);
+  background: #1e1e1e;
+  color: var(--arco-text);
+  letter-spacing: -0.011em;
+}
+
+/* ========== TOP BAR — 40px, menus, not a button dump ========== */
+#view-editor.arco .ed-top {
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 0 8px 0 4px !important;
+  gap: 0 !important;
+  background: var(--arco-panel) !important;
+  border-bottom: 1px solid var(--arco-border) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+#view-editor.arco .ed-brand {
+  gap: 8px;
+  padding: 0 8px 0 4px;
+}
+#view-editor.arco .ed-brand-mark {
+  width: 20px; height: 20px; border-radius: 5px;
+  background: var(--arco-accent) !important;
+  box-shadow: none !important;
+  font-size: 10px; font-weight: 700;
+}
+#view-editor.arco .ed-brand > span:last-child {
+  display: inline !important;
+  font-size: 12px; font-weight: 600; color: #fff;
+  letter-spacing: -0.02em;
+}
+#view-editor.arco .arco-menus {
+  display: flex; align-items: center; gap: 0; margin-left: 4px;
+}
+#view-editor.arco .arco-menu-btn {
+  height: 28px; padding: 0 8px;
+  background: transparent; border: 0; border-radius: 6px;
+  color: var(--arco-text-3); font-size: 12px; font-weight: 500;
+  cursor: pointer;
+}
+#view-editor.arco .arco-menu-btn:hover,
+#view-editor.arco .arco-menu-btn[aria-expanded="true"] {
+  background: var(--arco-hover); color: #fff;
+}
+#view-editor.arco .ed-filename {
+  height: 28px; font-size: 12px; font-weight: 500;
+  padding: 0 8px; border-radius: 6px; color: #fff;
+  background: transparent; border: 0;
+}
+#view-editor.arco .ed-filename:hover { background: var(--arco-hover); }
+#view-editor.arco .ed-filename:focus { background: var(--arco-input); outline: 1px solid var(--arco-accent); }
+#view-editor.arco .ed-pagename,
+#view-editor.arco .ed-top-divider,
+#view-editor.arco .ed-command-trigger,
+#view-editor.arco .ed-local-state,
+#view-editor.arco #ed-share,
+#view-editor.arco #ed-versions,
+#view-editor.arco #ed-plugins,
+#view-editor.arco #ed-help,
+#view-editor.arco #ed-health,
+#view-editor.arco #ed-focus,
+#view-editor.arco #ed-dev { display: none !important; }
+
+#view-editor.arco .arco-modes {
+  display: flex; align-items: center; gap: 0;
+  margin: 0 auto; height: 28px;
+  background: var(--arco-input); border-radius: 6px; padding: 2px;
+}
+#view-editor.arco .arco-modes button {
+  height: 24px; padding: 0 10px; border: 0; background: transparent;
+  color: var(--arco-text-4); font-size: 11px; font-weight: 500; border-radius: 4px;
+  cursor: pointer;
+}
+#view-editor.arco .arco-modes button:hover { color: #fff; }
+#view-editor.arco .arco-modes button.on {
+  background: var(--arco-panel-2); color: #fff;
+}
+#view-editor.arco #ed-present,
+#view-editor.arco #ed-undo,
+#view-editor.arco #ed-redo,
+#view-editor.arco #ed-view {
+  width: 28px; height: 28px; min-width: 28px; padding: 0;
+  justify-content: center; background: transparent; border: 0;
+  color: var(--arco-text-3); border-radius: 6px;
+}
+#view-editor.arco #ed-present svg + *,
+#view-editor.arco #ed-undo svg + *,
+#view-editor.arco #ed-redo svg + * { display: none !important; }
+#view-editor.arco #ed-present:hover,
+#view-editor.arco #ed-undo:hover,
+#view-editor.arco #ed-redo:hover,
+#view-editor.arco #ed-view:hover {
+  background: var(--arco-hover); color: #fff;
+}
+#view-editor.arco #ed-export {
+  height: 28px; padding: 0 12px; margin-left: 8px;
+  font-size: 11px; font-weight: 500;
+  background: var(--arco-accent) !important;
+  border: 0 !important; color: #fff !important;
+  border-radius: 6px;
+}
+#view-editor.arco #ed-export:hover { background: var(--arco-accent-2) !important; }
+#view-editor.arco #ed-export:active { transform: translateY(0.5px); }
+#view-editor.arco .ed-iconbtn:focus-visible,
+#view-editor.arco .arco-menu-btn:focus-visible,
+#view-editor.arco .tool:focus-visible {
+  outline: 2px solid var(--arco-accent);
+  outline-offset: 1px;
+}
+
+/* ========== BODY: layers | tools | canvas | props ========== */
+#view-editor.arco .ed-body {
+  gap: 0;
+  background: #1e1e1e;
+}
+#view-editor.arco .ed-left {
+  width: 232px; min-width: 180px; max-width: 360px;
+  background: var(--arco-panel);
+  border-right: 1px solid var(--arco-border);
+}
+#view-editor.arco .ed-right {
+  width: 240px; min-width: 200px; max-width: 360px;
+  background: var(--arco-panel);
+  border-left: 1px solid var(--arco-border);
+}
+#view-editor.arco .ed-canvas-wrap {
+  background: var(--arco-canvas);
+  position: relative;
+}
+
+/* Left tool rail — docked on the canvas, not a floating island */
+#view-editor.arco .ed-toolbar {
+  top: 12px !important;
+  left: 12px !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  flex-direction: column !important;
+  align-items: center;
+  width: 40px;
+  padding: 4px !important;
+  gap: 2px !important;
+  border: 1px solid var(--arco-line) !important;
+  border-radius: 10px !important;
+  background: var(--arco-panel) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: none !important;
+}
+#view-editor.arco .tool {
+  width: 32px; height: 32px; border-radius: 8px; color: var(--arco-text-2);
+}
+#view-editor.arco .tool .icon { width: 16px !important; height: 16px !important; }
+#view-editor.arco .tool:hover { background: var(--arco-hover); color: #fff; }
+#view-editor.arco .tool:active { background: var(--arco-active); }
+#view-editor.arco .tool.active {
+  background: var(--arco-selected) !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+#view-editor.arco .tool.has-fly:after {
+  right: 3px; bottom: 3px;
+  border-width: 3px;
+  opacity: .4;
+}
+#view-editor.arco .ed-toolbar .tb-sep,
+#view-editor.arco .tool-key,
+#view-editor.arco .tool-caret { display: none !important; }
+
+#view-editor.arco .ed-zoom {
+  right: 12px; bottom: 12px;
+  border: 1px solid var(--arco-line);
+  background: var(--arco-panel);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+}
+#view-editor.arco .ed-zoom button {
+  width: 28px; height: 28px; color: var(--arco-text-3);
+}
+#view-editor.arco .ed-zoom button:hover { background: var(--arco-hover); color: #fff; }
+#view-editor.arco #zoom-pct {
+  min-width: 44px; height: 28px; font-size: 11px; font-weight: 500; color: #fff;
+}
+
+#view-editor.arco .ed-status {
+  bottom: 52px; left: 60px;
+  background: var(--arco-panel); border: 0; color: var(--arco-text-3);
+  font-size: 10px; padding: 4px 8px; border-radius: 6px;
+}
+
+/* ========== LAYERS ========== */
+#view-editor.arco .ed-left-tabs {
+  height: 36px; padding: 0 8px; gap: 0;
+  background: var(--arco-panel);
+  border-bottom: 1px solid var(--arco-border);
+}
+#view-editor.arco .ed-ltab {
+  height: 36px; padding: 0 8px !important;
+  font-size: 11px; font-weight: 500;
+  color: var(--arco-text-4);
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+#view-editor.arco .ed-ltab:hover { color: #fff; }
+#view-editor.arco .ed-ltab.active { color: #fff !important; }
+#view-editor.arco .ed-ltab.active:after {
+  content: ""; position: absolute; left: 8px; right: 8px; bottom: 0;
+  height: 1px; background: #fff;
+}
+#view-editor.arco .ed-ltab svg { display: none; }
+#view-editor.arco .ly-search-wrap {
+  margin: 8px 8px 4px !important; height: 28px;
+  background: var(--arco-input); border: 0; border-radius: 6px;
+}
+#view-editor.arco .ly-search { font-size: 11px; height: 28px; }
+#view-editor.arco .ly-row {
+  min-height: 28px; margin: 0; padding-right: 6px;
+  border-radius: 0; color: var(--arco-text-2);
+}
+#view-editor.arco .ly-row:hover { background: var(--arco-hover); }
+#view-editor.arco .ly-row.sel {
+  background: rgba(13, 153, 255, 0.22) !important;
+  color: #fff; border: 0 !important;
+}
+#view-editor.arco .ly-name { font-size: 11px; font-weight: 450; }
+#view-editor.arco .ly-row.top-frame .ly-name { font-weight: 600; }
+#view-editor.arco .ly-tools { opacity: 0; }
+#view-editor.arco .ly-row:hover .ly-tools,
+#view-editor.arco .ly-row.sel .ly-tools { opacity: 1; }
+#view-editor.arco .ly-al, #view-editor.arco .ly-mask {
+  background: transparent !important; color: var(--arco-text-4) !important;
+  font-size: 9px; padding: 0 3px;
+}
+
+/* ========== INSPECTOR — folds, not cards ========== */
+#view-editor.arco .ins-tabs { display: none !important; }
+#view-editor.arco .arco-ins-type {
+  height: 36px; padding: 0 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--arco-border);
+  font-size: 12px; font-weight: 600; color: #fff;
+}
+#view-editor.arco .arco-ins-type small {
+  font-size: 10px; font-weight: 500; color: var(--arco-text-4);
+}
+#view-editor.arco .arco-fold {
+  border-bottom: 1px solid var(--arco-border);
+}
+#view-editor.arco .arco-fold-h {
+  width: 100%; height: 32px; padding: 0 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: transparent; border: 0; color: #fff;
+  font-size: 11px; font-weight: 500; cursor: pointer; text-align: left;
+}
+#view-editor.arco .arco-fold-h:hover { background: var(--arco-hover); }
+#view-editor.arco .arco-fold-h i {
+  width: 0; height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--arco-text-4);
+  transition: transform .12s ease;
+}
+#view-editor.arco .arco-fold.shut .arco-fold-h i { transform: rotate(-90deg); }
+#view-editor.arco .arco-fold.shut .arco-fold-b { display: none; }
+#view-editor.arco .arco-fold-b { padding: 0 12px 10px; }
+#view-editor.arco .arco-fold-b .ins-sec {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+#view-editor.arco .arco-fold-b .ins-head,
+#view-editor.arco .arco-fold-b .ins-sec-title { display: none !important; }
+#view-editor.arco .arco-fold-b .ins-sec.pf-ins-empty .ins-head {
+  display: flex !important;
+  margin: 0;
+  min-height: 28px;
+}
+#view-editor.arco .arco-fold-b .ph,
+#view-editor.arco .arco-fold-b .ph.sm { display: none !important; }
+
+#view-editor.arco .ins-grid label,
+#view-editor.arco .ins-lbl,
+#view-editor.arco .ins-dim {
+  font-size: 11px; color: var(--arco-text-3);
+}
+#view-editor.arco .ins-sec input[type="number"],
+#view-editor.arco .ins-sec input[type="text"],
+#view-editor.arco .ins-sec select,
+#view-editor.arco .ins-num,
+#view-editor.arco .arco-fold-b input[type="number"],
+#view-editor.arco .arco-fold-b input[type="text"],
+#view-editor.arco .arco-fold-b select {
+  background: var(--arco-input) !important;
+  border: 1px solid transparent !important;
+  color: #fff !important;
+  height: 28px; border-radius: 6px; font-size: 11px;
+  padding: 0 8px;
+}
+#view-editor.arco .ins-sec input:hover,
+#view-editor.arco .ins-sec select:hover,
+#view-editor.arco .arco-fold-b input:hover,
+#view-editor.arco .arco-fold-b select:hover {
+  background: #252525 !important;
+}
+#view-editor.arco .ins-sec input:focus,
+#view-editor.arco .ins-sec select:focus,
+#view-editor.arco .arco-fold-b input:focus,
+#view-editor.arco .arco-fold-b select:focus {
+  border-color: var(--arco-accent) !important;
+  box-shadow: none !important;
+}
+#view-editor.arco .ed-btn.sm,
+#view-editor.arco .mini {
+  height: 28px; padding: 0 8px;
+  background: transparent; border: 0; color: var(--arco-text-3);
+  border-radius: 6px; font-size: 11px;
+}
+#view-editor.arco .ed-btn.sm:hover,
+#view-editor.arco .mini:hover { background: var(--arco-hover); color: #fff; }
+#view-editor.arco .align-row { gap: 0; padding: 0 0 6px; }
+#view-editor.arco .al-dir {
+  width: 28px; height: 28px; border: 0; background: transparent;
+  color: var(--arco-text-3); border-radius: 6px;
+}
+#view-editor.arco .al-dir:hover { background: var(--arco-hover); color: #fff; }
+#view-editor.arco .al-dir.on { background: var(--arco-selected); color: #fff; }
+#view-editor.arco .fill-row, #view-editor.arco .sh-row {
+  background: var(--arco-input); border-radius: 6px; padding: 4px 6px;
+}
+#view-editor.arco .studio-empty-ins {
+  padding: 32px 16px !important; text-align: center;
+}
+#view-editor.arco .studio-empty-ins h3 {
+  font-size: 11px; font-weight: 500; color: var(--arco-text-4); margin: 0;
+}
+
+/* flyouts open to the right of the rail */
+.pf-flyout.arco-fly-right {
+  min-width: 180px;
+  padding: 4px !important;
+}
+.pf-flyout.arco-fly-right button {
+  height: 32px !important; font-size: 12px;
+}
+
+/* menus */
+.pf-menu.arco-bar-menu {
+  min-width: 200px;
+  padding: 4px !important;
+}
+.pf-menu.arco-bar-menu button {
+  height: 28px; font-size: 12px; border-radius: 4px;
+}
+.pf-menu.arco-bar-menu button:hover { background: var(--arco-selected) !important; }
+.pf-menu.arco-bar-menu .kbd,
+.pf-menu.arco-bar-menu .pf-hint {
+  margin-left: auto; color: var(--arco-text-4); font-size: 10px;
+}
+
+/* hide leftover chrome */
+#view-editor.arco .studio-welcome { display: none !important; }
+#pf-persist-banner { display: none !important; }

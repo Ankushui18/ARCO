@@ -359,10 +359,11 @@
       if (!doc.id) doc.id = M.uid('doc-');
       return doc;
     },
-    deleteFile(id) {
+    async deleteFile(id) {
       const f = M.store.get(id);
       if (!f) return;
-      if (!confirm('Delete “' + f.name + '”? This cannot be undone.')) return;
+      const ok = await Dialogs.confirm('Delete “' + f.name + '”? This cannot be undone.', { okLabel: 'Delete', danger: true });
+      if (!ok) return;
       M.store.remove(id);
       this.render();
       global.App.toast('Deleted ' + f.name, 2500);
@@ -378,10 +379,10 @@
       this.render();
       global.App.toast('Duplicated ' + f.name, 2500, 'success');
     },
-    renameFile(id) {
+    async renameFile(id) {
       const f = M.store.get(id);
       if (!f) return;
-      const name = prompt('Rename file', f.name);
+      const name = await Dialogs.prompt('Rename file', f.name);
       if (!name) return;
       f.name = name.trim();
       if (f.doc) f.doc.name = f.name;

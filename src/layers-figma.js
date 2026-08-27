@@ -166,11 +166,12 @@
       switchPage(App.doc.pages.length - 1);
     }
 
-    function deletePage(i) {
+    async function deletePage(i) {
       const doc = App.doc;
       if (!doc || doc.pages.length <= 1) { App.toast('You need at least one page'); return; }
       const name = doc.pages[i] && doc.pages[i].name;
-      if (!confirm('Delete page “' + name + '”?')) return;
+      const ok = await Dialogs.confirm('Delete page “' + name + '”?', { okLabel: 'Delete', danger: true });
+      if (!ok) return;
       App.history.begin(doc);
       doc.pages.splice(i, 1);
       App.history.end(doc);

@@ -162,7 +162,7 @@
         if (corners) {
           const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
           for (const p of [mid(corners[0], corners[1]), mid(corners[1], corners[2]), mid(corners[2], corners[3]), mid(corners[3], corners[0])]) {
-            paintSquare(ctx, p.x, p.y, 7);
+            paintSquare(ctx, p.x, p.y, 5);
           }
         }
       } else {
@@ -173,7 +173,7 @@
             [u.x + u.w / 2, u.y], [u.x + u.w, u.y + u.h / 2],
             [u.x + u.w / 2, u.y + u.h], [u.x, u.y + u.h / 2],
           ];
-          for (const [wx, wy] of pts) paintSquare(ctx, wx * z + ox, wy * z + oy, 7);
+          for (const [wx, wy] of pts) paintSquare(ctx, wx * z + ox, wy * z + oy, 5);
         }
       }
 
@@ -377,8 +377,24 @@
         this.status(Math.round(Math.abs(fx) * 100) + '% × ' + Math.round(Math.abs(fy) * 100) + '%');
         return;
       }
-      return _onMove ? _onMove(e) : undefined;
+      return _cursorTail.call(this, e, _onMove ? _onMove(e) : undefined);
     };
+    // Cursor-hover tail (was a separate outer App.onMove wrapper in this
+    // file — merged so this file only reassigns App.onMove once). Runs
+    // after the base handler on every move; the drag-kind branches above
+    // already `return` before reaching here, matching the old behavior
+    // where their active _drag made the outer wrapper's `!this._drag`
+    // guards fail.
+    function _cursorTail(e, out) {
+      if (!this._drag && this.tool === 'move' && this.sel.length === 1 && this.canvas) {
+        const h = this.handleAt(e);
+        if (h && h.cursor) this.canvas.style.cursor = h.cursor;
+      }
+      if (!this._drag && this.tool === 'move' && this._rotOriginOn && hitOrigin(e) && this.canvas) {
+        this.canvas.style.cursor = 'move';
+      }
+      return out;
+    }
 
     const _onUp = App.onUp && App.onUp.bind(App);
     App.onUp = function (e) {
@@ -421,19 +437,6 @@
         }
       }
       return h;
-    };
-
-    const prevMove = App.onMove.bind(App);
-    App.onMove = function (e) {
-      const out = prevMove(e);
-      if (!this._drag && this.tool === 'move' && this.sel.length === 1 && this.canvas) {
-        const h = this.handleAt(e);
-        if (h && h.cursor) this.canvas.style.cursor = h.cursor;
-      }
-      if (!this._drag && this.tool === 'move' && this._rotOriginOn && hitOrigin(e) && this.canvas) {
-        this.canvas.style.cursor = 'move';
-      }
-      return out;
     };
 
     if (global.Shortcuts && global.Shortcuts.def) {

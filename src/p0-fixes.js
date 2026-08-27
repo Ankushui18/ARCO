@@ -78,12 +78,6 @@
         }
       }
     }
-    const _markDirty = App.markDirty.bind(App);
-    App.markDirty = function(){
-      if (this.page) sanitizePage(this.page);
-      _markDirty();
-    };
-
     // ===============================================================
     // 2. Centralized Command system (undo/redo integrity)
     //    User Action → Command → Transaction → Mutation → History
@@ -136,7 +130,13 @@
       }
     }
     const _markDirty2 = App.markDirty.bind(App);
-    App.markDirty = function(){ pruneSel(); _markDirty2(); };
+    // Merged: this used to be two sequential wrap-and-override blocks in
+    // this file (page sanitization, then stale-selection pruning).
+    App.markDirty = function(){
+      pruneSel();
+      if (this.page) sanitizePage(this.page);
+      _markDirty2();
+    };
 
     // ===============================================================
     // 4. Viewport-jump fix: never reset ox/oy implicitly; remember zoom
@@ -221,20 +221,6 @@
       const b = n._w || {x:n.x,y:n.y,w:n.w,h:n.h};
       return {x:b.x+b.w/2, y:b.y+b.h/2};
     }
-    // Patch rotate drag setup
-    const _onDown = App.onDown.bind(App);
-    // We can't easily replace onDown; instead we wrap the _drag rotate init
-    // by intercepting setDrag via a Proxy-like approach. Easier: correct the
-    // rotation center on every rotate move.
-    const _onMove = App.onMove.bind(App);
-    App.onMove = function(e){
-      const d = this._drag;
-      if (d && d.kind==='rotate' && d.node){
-        const wc = worldCenter(d.node);
-        d.cx = wc.x; d.cy = wc.y;
-      }
-      _onMove(e);
-    };
 
     // ===============================================================
     // 7. Transform-origin (pivot) support: n.pivot = [px,py] in [0..1]
@@ -587,20 +573,6 @@
     }
 
     // ===============================================================
-    // 13. Baseline snapping for text (P0 §7)
-    // ===============================================================
-    // Add text baselines to snap targets
-    if (App._snapBox){
-      const _snapBox = App._snapBox.bind(App);
-      App._snapBox = function(box, excl, allow){
-        // add baseline targets for text nodes
-        const page = this.page;
-        const res = _snapBox(box, excl, allow);
-        return res;
-      };
-    }
-
-    // ===============================================================
     // 14. Smart distance indicators ("12 px") — rendered by renderer
     // ===============================================================
     // During snapping we track nearest parallel gap and annotate.
@@ -729,9 +701,9 @@
       );
     }
     // Bulk rename
-    App.bulkRename = function(){
+    App.bulkRename = async function(){
       if(!this.sel.length) return;
-      const prefix = prompt('Rename selected layers (use {{n}} for number, e.g. "Item {{n}}")', 'Layer {{n}}');
+      const prefix = await Dialogs.prompt('Rename selected layers (use {{n}} for number, e.g. "Item {{n}}")', 'Layer {{n}}');
       if(!prefix) return;
       App.history.begin(App.doc);
       this.sel.forEach((id,i)=>{ const n=App.page.nodes[id]; if(n) n.name = prefix.replace(/\{\{n\}\}/g, i+1); });
@@ -792,6 +764,10 @@
       _onDown2(e);
     };
     const _onMove2 = App.onMove.bind(App);
+    // Merged: this used to be two sequential wrap-and-override blocks in
+    // this file (rotate-multi group drag, then a separate rotate
+    // center-correction pass). Combined into one so this file only
+    // reassigns App.onMove once instead of twice.
     App.onMove = function(e){
       const d = this._drag;
       if (d && d.kind==='rotate-multi'){
@@ -809,6 +785,10 @@
         this.markDirty();
         this.status((M.toFigmaDeg ? M.toFigmaDeg(rot) : Math.round(rot*180/Math.PI))+'°');
         return;
+      }
+      if (d && d.kind==='rotate' && d.node){
+        const wc = worldCenter(d.node);
+        d.cx = wc.x; d.cy = wc.y;
       }
       _onMove2(e);
     };
