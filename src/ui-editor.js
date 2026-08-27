@@ -1,4 +1,4 @@
-/* ui-editor.js — Penfig editor: canvas interactions, tools, zoom, text editing */
+/* ui-editor.js — ARCO editor: canvas interactions, tools, zoom, text editing */
 (function (global) {
   'use strict';
   const M = global.Model;
@@ -179,7 +179,7 @@
       global.Dash.saveDoc(this.doc);
     },
     exportBackupFig() {
-      this.exportFigAsync(this.doc, this.doc.name || 'penfig').then(
+      this.exportFigAsync(this.doc, this.doc.name || 'arco').then(
         () => this.toast('Backup exported', 2500, 'success'),
         (err) => this.toast('Backup failed: ' + err.message, 6000, 'error')
       );
@@ -193,7 +193,7 @@
       ed.innerHTML = `
       <div class="ed-top">
         <button id="ed-back" class="ed-iconbtn" title="Back to files">${Ico('back',{size:16})}</button>
-        <div class="ed-brand" title="Penfig Studio — local-first design workspace"><span class="ed-brand-mark">P</span><span>Penfig</span></div>
+        <div class="ed-brand" title="ARCO — local-first design workspace"><span class="ed-brand-mark">P</span><span>ARCO</span></div>
         <div class="ed-filename-wrap">
           <input id="ed-filename" class="ed-filename" value="${docName}" spellcheck="false">
           <span class="ed-pagename" id="ed-pagename" title="Double-click to rename page"></span>
@@ -332,7 +332,7 @@
       });
     },
     showWelcome(force) {
-      const key = 'penfig.welcome.v3';
+      const key = 'arco.welcome.v3';
       if (!force && localStorage.getItem(key)) return;
       document.querySelector('.studio-welcome')?.remove();
       const wrap = document.createElement('div');
@@ -340,7 +340,7 @@
       wrap.innerHTML = `<div class="studio-welcome-card">
         <button class="studio-welcome-x" aria-label="Close">×</button>
         <span class="studio-kicker">LOCAL-FIRST DESIGN</span>
-        <h2>Welcome to Penfig Studio</h2>
+        <h2>Welcome to ARCO</h2>
         <p>Your files stay on this device. Draw, prototype, inspect and export without an account.</p>
         <div class="studio-start-grid">
           <button data-tool="move"><kbd>V</kbd><span><b>Select</b><small>Pick and transform layers</small></span></button>
@@ -701,7 +701,7 @@
         const mb = Math.round(size/MB);
         const ok = await Dialogs.confirm(
           'This .fig file is ' + mb + ' MB. Importing it may use significant memory and take a while.\n\n' +
-          'Penfig will import it in the background with a progress bar. Continue?',
+          'ARCO will import it in the background with a progress bar. Continue?',
           { okLabel: 'Import' }
         );
         if (!ok) return;
@@ -827,13 +827,13 @@
     },
     _exportFigSync(doc, name, opts) {
       const bytes = global.FigConv.exportFig(doc, opts || {});
-      this._downloadBytes(bytes, (name || doc.name || 'penfig') + '.fig', 'application/x-figma');
+      this._downloadBytes(bytes, (name || doc.name || 'arco') + '.fig', 'application/x-figma');
       return Promise.resolve();
     },
     _startExportWorker(doc, name, opts) {
       return new Promise((resolve, reject) => {
         const jobId = ++this._exportJobId;
-        const fname = (name || doc.name || 'penfig') + '.fig';
+        const fname = (name || doc.name || 'arco') + '.fig';
         this._showExportProgress(fname, 2, 'Starting export worker…');
         let worker;
         try { worker = new Worker('src/export-worker.js', { type:'classic' }); }
@@ -2143,7 +2143,7 @@
           e.target.closest('.ed-zoom') || e.target.closest('.pf-menu') ||
           e.target.closest('.pf-palette') || e.target.closest('.pf-font-picker') ||
           e.target.closest('.ed-modal-backdrop') || e.target.closest('.modal-back') ||
-          e.target.closest('.pf-modal') || e.target.closest('#penfig-toast') ||
+          e.target.closest('.pf-modal') || e.target.closest('#arco-toast') ||
           e.target.closest('.pin.open') || e.target.closest('.peer-cursor'))) return;
         commit(true);
       };
@@ -3365,10 +3365,10 @@
 
     // ------------------------------------------------------------- toast
     toast(msg, ms, actionsOrKind) {
-      let el = document.getElementById('penfig-toast');
+      let el = document.getElementById('arco-toast');
       if (!el) {
         el = document.createElement('div');
-        el.id = 'penfig-toast';
+        el.id = 'arco-toast';
         document.body.appendChild(el);
       }
       el.className = '';

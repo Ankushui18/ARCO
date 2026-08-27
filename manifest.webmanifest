@@ -1,6 +1,6 @@
 {
-  "name": "Penfig",
-  "short_name": "Penfig",
+  "name": "ARCO",
+  "short_name": "ARCO",
   "start_url": "./",
   "display": "standalone",
   "description": "Offline-first design editor"

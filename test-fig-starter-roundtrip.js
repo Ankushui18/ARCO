@@ -42,7 +42,7 @@ const doc = ctx.Dash.makeStarterDoc();
 for (const page of doc.pages) ctx.Layout.layoutPage(page);
 const bytes = ctx.FigConv.exportFig(doc);
 if (process.env.WRITE_FIG_FIXTURE === '1') {
-  fs.writeFileSync(path.join(__dirname, 'fixtures', 'penfig-starter-export-fixed.fig'), Buffer.from(bytes));
+  fs.writeFileSync(path.join(__dirname, 'fixtures', 'arco-starter-export-fixed.fig'), Buffer.from(bytes));
 }
 const parsed = ctx.FigIO.parseFigFile(bytes);
 const changes = parsed.binary.message.nodeChanges;

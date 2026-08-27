@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#111318">
-  <meta name="description" content="Penfig Studio — a free, local-first interface design and prototyping workspace.">
-  <title>Penfig Studio — Design without limits</title>
+  <meta name="description" content="ARCO — a free, local-first interface design and prototyping workspace.">
+  <title>ARCO — Design without limits</title>
   <link rel="stylesheet" href="app.css">
   <link rel="stylesheet" href="src/ui3.css">
   <link rel="stylesheet" href="src/inspector-ui3.css">
@@ -16,9 +16,9 @@
 <body>
   <div id="view-dashboard" style="display:none"></div>
   <div id="view-editor" style="display:none"></div>
-  <noscript>Penfig needs JavaScript.</noscript>
+  <noscript>ARCO needs JavaScript.</noscript>
 
-  <script src="assets/penfig.js"></script>
+  <script src="assets/arco.js"></script>
 
 <script>
 // Only register the service worker in production (not on localhost or Vercel
@@ -29,7 +29,7 @@
   const host = location.hostname;
   const isProd = !/^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(host)
     && !host.endsWith('.local')
-    && !/penfig-git-/i.test(host)
+    && !/arco-git-/i.test(host)
     && !/-.*-.*\.vercel\.app$/i.test(host);
   window.addEventListener("load", () => {
     if (isProd) {
@@ -38,7 +38,7 @@
       // Unregister any previously-registered SW so stale cache doesn't cling.
       navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
       caches.keys().then(ks => ks.forEach(k => {
-        if (k.startsWith('penfig-app-')) caches.delete(k);
+        if (k.startsWith('arco-app-')) caches.delete(k);
       }));
     }
   });

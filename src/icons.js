@@ -1,7 +1,7 @@
-/* icons.js — inline SVG icon set for Penfig.
+/* icons.js — inline SVG icon set for ARCO.
  * Every icon is a 24×24 viewBox path (or multi-path). Use icon(name, cls, size).
  * No external assets. All icons match Figma/Sketch visual language with
- * Penfig's stroke weight (1.5) and rounded linecaps/joins.
+ * ARCO's stroke weight (1.5) and rounded linecaps/joins.
  */
 (function(global) {
   'use strict';

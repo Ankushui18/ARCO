@@ -1,13 +1,13 @@
-# Penfig — Complete Product Update Specification (Roadmap)
+# ARCO — Complete Product Update Specification (Roadmap)
 
 This document is the product update specification pasted by the user (2026-08-25),
 persisted as the roadmap of record. The user's instruction: **“update all this
 changes.”** Work is executed in the spec's own implementation order (§49).
 
-> **North Star (verbatim, spec §52):** “Build Penfig as a **standalone,
+> **North Star (verbatim, spec §52):** “Build ARCO as a **standalone,
 > offline-first professional design tool**… **Figma-level interaction model +
 > professional feature coverage + completely local/offline capability +
-> Penfig-native file format.**”
+> ARCO-native file format.**”
 
 ## The standing rules (always in force)
 
@@ -22,7 +22,7 @@ changes.”** Work is executed in the spec's own implementation order (§49).
 - **§3 — Interop discipline.** “Do **not** let `.fig` become the native model.
   Native: PFG → full fidelity. Interop: FIG → supported fidelity.”
 - **§48 — Compatibility rule.** Figma interaction model + terminology +
-  shortcuts + mental model, with **Penfig visual identity** (not a pixel copy).
+  shortcuts + mental model, with **ARCO visual identity** (not a pixel copy).
 - **§43 — Sandbox honesty.** “Do not silently claim `new Function` is a secure
   sandbox.” (Plugins: sandboxed Web Worker with whitelisted RPC; labelled local
   fallback; sandboxed scripts-only iframe for UI plugins.)
@@ -192,7 +192,7 @@ template marketplace · enterprise billing.
 - Feature parity: **90%+ of the important Figma Design workflow**
 - UX parity: **95%+ muscle memory** (shortcuts/interactions, §48)
 - Offline: **100% core** (no network at runtime — already true)
-- Native files: **100% Penfig fidelity through `.pfg`** (Phase 7)
+- Native files: **100% ARCO fidelity through `.pfg`** (Phase 7)
 - Figma interop: best-effort (`.fig` stays interop-only, §3)
 - “The next major milestone should therefore be **P0 UX + Drawing/Vector +
   Typography**, while preserving the existing Auto Layout/component/variable
@@ -280,7 +280,7 @@ table below.
      `.fig` export after any undo. Rewritten as a min/max loop.
   Also closed the **`.fig` component interop** gap: export now writes
   components as `SYMBOL` and instances as `INSTANCE` bound via
-  `overriddenSymbolID` (this openfig v101 schema has no `COMPONENT` type and
+  `overriddenSymbolID` (this oarco v101 schema has no `COMPONENT` type and
   no `mainComponentGuid` field — documented deviation: real Figma keeps the
   cloned subtree, reads the instance as detached, and does not round-trip
   per-instance prop overrides or the variant grid); import maps both back and

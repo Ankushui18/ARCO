@@ -186,7 +186,7 @@
               });
               const suffix = setting.suffix || '';
               const name = String(n.name || 'export').replace(/[\\/:*?"<>|]+/g, '-') + suffix + '.jpg';
-              if (global.PenfigSave && global.PenfigSave.saveBlob) await global.PenfigSave.saveBlob(blob, name);
+              if (global.ARCOSave && global.ARCOSave.saveBlob) await global.ARCOSave.saveBlob(blob, name);
               else {
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob); a.download = name; a.click();

@@ -526,7 +526,7 @@
         return n ? { x: n.x, y: n.y, w: n.w, h: n.h, parent: n.parent } : null;
       });
       try {
-        const payload = { __penfig: 'clone-v1', trees: serializeTrees(this.clipboard.trees) };
+        const payload = { __arco: 'clone-v1', trees: serializeTrees(this.clipboard.trees) };
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(JSON.stringify(payload)).catch(() => {});
         }
@@ -557,7 +557,7 @@
       navigator.clipboard.readText().then((txt) => {
         try {
           const data = JSON.parse(txt);
-          if (data && data.__penfig === 'clone-v1' && Array.isArray(data.trees)) {
+          if (data && data.__arco === 'clone-v1' && Array.isArray(data.trees)) {
             app.clipboard = { trees: data.trees, origin: data.origin || [] };
           }
         } catch (e) {}
@@ -718,9 +718,9 @@
         if (navigator.clipboard && window.ClipboardItem) {
           navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(
             () => this.toast('Copied PNG @2×'),
-            () => downloadBlob(blob, (this.doc.name || 'penfig') + '.png')
+            () => downloadBlob(blob, (this.doc.name || 'arco') + '.png')
           );
-        } else downloadBlob(blob, (this.doc.name || 'penfig') + '.png');
+        } else downloadBlob(blob, (this.doc.name || 'arco') + '.png');
       }, 'image/png');
     };
 

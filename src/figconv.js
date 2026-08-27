@@ -1,11 +1,11 @@
-/* figconv.js — Figma .fig ⇄ Penfig model conversion.
+/* figconv.js — Figma .fig ⇄ ARCO model conversion.
  *
  * Import:  .fig (zip) → canvas.fig (fig-kiwi) → kiwi JSON (NodeChanges)
- *          → tree → Penfig document.  Uses the schema EMBEDDED in the file,
+ *          → tree → ARCO document.  Uses the schema EMBEDDED in the file,
  *          so older and newer Figma exports both decode (old + new field
  *          names are both handled).
  *
- * Export:  Penfig document → kiwi NodeChanges (Figma's current schema, 550
+ * Export:  ARCO document → kiwi NodeChanges (Figma's current schema, 550
  *          defs) → fig-kiwi chunks → zip with meta.json + thumbnail + images.
  *          The result is a real .fig file Figma can open: frames, rects,
  *          ellipses, lines, text, auto layout, fills/strokes/effects,
@@ -282,7 +282,7 @@
     };
   }
 
-  // Convert Figma's 2×3 matrix (maps local origin = top-left) into Penfig's
+  // Convert Figma's 2×3 matrix (maps local origin = top-left) into ARCO's
   // parent-local x/y + center-pivot rotation. The local box's center
   // (hw,hh) must map, under this matrix, to the world center (x+hw,y+hh) —
   // that identity holds regardless of rotation/flip, so x/y is solved
@@ -310,7 +310,7 @@
     if (Math.abs(rot) > 1e-4) n.rotation = rot;
   }
 
-  // Inverse of applyFigTransform: Penfig node -> Figma transform matrix.
+  // Inverse of applyFigTransform: ARCO node -> Figma transform matrix.
   // Kept as the single source of truth for both directions so a future
   // change to one can't silently drift out of sync with the other (see
   // the position round-trip regression covered by test-fig-transform.js).
@@ -620,7 +620,7 @@
     M.attach(doc, page, parentId, n);
     report.nodes++;
     const rawRef = byId.get(gid(fn));
-    if (rawRef) rawRef._pfid = n.id; // guid → penfig id (for instance rebinding)
+    if (rawRef) rawRef._pfid = n.id; // guid → arco id (for instance rebinding)
     // children — O(k) via the prebuilt map. The old getKids scanned every
     // node for every parent (O(n²)) and froze real files.
     const subKids = sortKids ? sortKids(gid(fn)) : [];
@@ -895,7 +895,7 @@
     };
     const bytes = global.FigIO.writeFig({
       message,
-      meta: { file_name: doc.name, last_editor: 'Penfig', version: 0 },
+      meta: { file_name: doc.name, last_editor: 'ARCO', version: 0 },
       thumbnail: opts.thumbnail ? u8FromB64(opts.thumbnail.split(',')[1]) : null,
       images: [...unique.entries()].map(([h, b]) => [h, u8FromB64(b)]),
       version: 101,
@@ -920,7 +920,7 @@
   function exportNode(page, n, parentGuid, guid, next, doc, ctx, guidOf) {
     const out = { guid, phase: 'CREATED', name: n.name };
     const typeMap = { frame: 'FRAME', rect: 'RECTANGLE', ellipse: 'ELLIPSE', line: 'LINE', text: 'TEXT', vector: 'VECTOR', instance: 'INSTANCE' };
-    // This openfig v101 schema has no COMPONENT NodeType — component masters
+    // This oarco v101 schema has no COMPONENT NodeType — component masters
     // are the legacy SYMBOL type (which is also why the instance→master
     // reference field is overriddenSymbolID, not mainComponentGuid).
     out.type = (n.type === 'frame' && n.isComponent) ? 'SYMBOL' : (typeMap[n.type] || 'FRAME');
@@ -977,7 +977,7 @@
       } catch (e) { /* unencodable path: vector exported without geometry */ }
     }
     if (n.type === 'instance' && n.componentId && guidOf) {
-      // Bind the instance to its component. The v101 openfig schema has no
+      // Bind the instance to its component. The v101 oarco schema has no
       // mainComponentGuid field, so the binding is carried in the legacy
       // overriddenSymbolID GUID (documented deviation): our importer re-binds
       // it; real Figma keeps the cloned subtree (visual parity) but sees the

@@ -265,7 +265,7 @@
       if (size >= WARN_BYTES && global.Dialogs) {
         const mb = Math.round(size / (1024 * 1024));
         const ok = await Dialogs.confirm(
-          'This .fig is ' + mb + ' MB.\n\nPenfig will keep the file in a background worker, open the first page only, and load images as they appear on screen. Undo and auto-save stay off so the tab does not freeze.\n\nA page with tens of thousands of vectors can still hitch — file size is not the same as layer count.',
+          'This .fig is ' + mb + ' MB.\n\nARCO will keep the file in a background worker, open the first page only, and load images as they appear on screen. Undo and auto-save stay off so the tab does not freeze.\n\nA page with tens of thousands of vectors can still hitch — file size is not the same as layer count.',
           { okLabel: 'Import', title: 'Large file' }
         );
         if (!ok) return;

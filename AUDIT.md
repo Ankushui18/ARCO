@@ -1,4 +1,4 @@
-# Penfig Audit — 2026-08-26
+# ARCO Audit — 2026-08-26
 
 ## Critical Bugs Found & Fixed
 

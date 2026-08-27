@@ -1,4 +1,4 @@
-/* Penfig — professional design tool UI (Figma-like dark chrome) */
+/* ARCO — professional design tool UI (Figma-like dark chrome) */
 :root {
   /* Surfaces */
   --bg:         #1e1e1e;   /* app chrome outer background */
@@ -766,7 +766,7 @@ body.pan-ready #ed-canvas { touch-action: pan-x pan-y; }
 .sc-grid span:nth-child(odd) { color: #cfcfcf; font-family: ui-monospace, monospace; font-size: 11px; }
 
 /* ─── toast ─── */
-#penfig-toast {
+#arco-toast {
   position: fixed; bottom: 22px; left: 50%; transform: translate(-50%, 20px);
   background: #2c2c2c; color: #fff; padding: 9px 16px; border-radius: var(--r3);
   font-size: 12px; opacity: 0; pointer-events: none; transition: all .2s cubic-bezier(.2,.8,.2,1); z-index: 99;
@@ -774,15 +774,15 @@ body.pan-ready #ed-canvas { touch-action: pan-x pan-y; }
   border: 1px solid #111;
   display: flex; align-items: center; gap: 8px;
 }
-#penfig-toast.show { opacity: 1; transform: translate(-50%, 0); }
-#penfig-toast.error { background: #411b15; border-color: #5d251c; color: #ffb8ac; }
-#penfig-toast.success { background: #15311f; border-color: #1c4c2c; color: #9fe6bb; }
-#penfig-toast .toast-actions { display: flex; gap: 8px; margin-top: 8px; }
-#penfig-toast .toast-actions button {
+#arco-toast.show { opacity: 1; transform: translate(-50%, 0); }
+#arco-toast.error { background: #411b15; border-color: #5d251c; color: #ffb8ac; }
+#arco-toast.success { background: #15311f; border-color: #1c4c2c; color: #9fe6bb; }
+#arco-toast .toast-actions { display: flex; gap: 8px; margin-top: 8px; }
+#arco-toast .toast-actions button {
   font-size: 11px; padding: 4px 12px; border-radius: var(--r2);
   border: 1px solid #3a3a3a; background: rgba(255,255,255,.05); color: #fff; cursor:pointer;
 }
-#penfig-toast .toast-actions button:hover { background: var(--accent); border-color: var(--accent); }
+#arco-toast .toast-actions button:hover { background: var(--accent); border-color: var(--accent); }
 
 /* ═══════════════════════════ ECOSYSTEM ═══════════════════════════ */
 .ed-peers { display: flex; align-items: center; gap: -6px; margin: 0 6px; }

@@ -1,4 +1,4 @@
-# Penfig — changes made this session
+# ARCO — changes made this session
 
 ## 1. Native dialogs → real dialogs (`src/dialogs.js`, new)
 All 21 call sites using the browser's blocking `prompt()`/`confirm()`/`alert()`

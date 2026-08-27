@@ -1,4 +1,4 @@
-/* fonts.js — Penfig Font Manager
+/* fonts.js — ARCO Font Manager
  *
  * Provides:
  *   - Curated list of Google Fonts (loaded on demand via FontFace API)

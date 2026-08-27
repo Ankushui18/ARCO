@@ -1,4 +1,4 @@
-/* boolean.js — Penfig vector operations on REAL geometry (spec §7–8):
+/* boolean.js — ARCO vector operations on REAL geometry (spec §7–8):
  * union / subtract / intersect / exclude, flatten, offset & outline stroke,
  * plus the §7 regular shapes (polygon / star / triangle).
  *

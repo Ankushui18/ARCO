@@ -1,8 +1,8 @@
-# Penfig tool parity audit — 2026-08-26
+# ARCO tool parity audit — 2026-08-26
 
-This audit compares the tools exposed by the current Penfig build with Figma Design's current official tool documentation. “Parity” means the core workflow is usable; it does not claim identical rendering or every advanced option.
+This audit compares the tools exposed by the current ARCO build with Figma Design's current official tool documentation. “Parity” means the core workflow is usable; it does not claim identical rendering or every advanced option.
 
-| Area | Penfig now | Figma baseline | Status | Next engineering target |
+| Area | ARCO now | Figma baseline | Status | Next engineering target |
 |---|---|---|---|---|
 | Move / selection | Select, multi-select, marquee, move, snapping, keyboard nudging | Move/select, deep selection and alignment workflows | Strong core | Selection cycling and direct measurement overlays |
 | Scale | Dedicated K tool; proportional geometry; scales descendants, text, strokes, effects and auto-layout spacing | K Scale tool preserves proportions and visual properties | Added in this pass | Multi-root scaling and numeric percentage control |
@@ -24,11 +24,11 @@ This audit compares the tools exposed by the current Penfig build with Figma Des
 
 - Added a dedicated Scale tool to the toolbar and shortcut registry (`K`).
 - Scale preserves aspect ratio and proportionally scales nested geometry, typography, stroke width/dashes, effects and auto-layout gaps/padding.
-- Added Figma-compatible Arrow shortcut (`Shift+L`) while preserving Penfig's existing `A` shortcut.
+- Added Figma-compatible Arrow shortcut (`Shift+L`) while preserving ARCO's existing `A` shortcut.
 - Added frame presets for common phone, Android, tablet, desktop, presentation and social canvases.
 - Kept the existing text editing duplicate-render fix and vertical auto-layout text sizing regression coverage.
 - Verified JavaScript syntax, shortcut conflicts and the complete engine smoke suite.
 
 ## Honest conclusion
 
-Penfig now covers the everyday core of Figma's creation toolbar, and several workflows are already competitive: local-first operation, offline availability, dependency-free deployment, auto layout, vector drawing, components, variables, prototyping, export and dev inspection. It is not yet truthful to call every tool fully equal to current Figma. The largest remaining tool-level gaps are advanced vector-edit subtools, ellipse arcs/rings, parametric shape controls, richer image cropping/media, and drag-created area text. These should be addressed as engine features rather than cosmetic toolbar additions.
+ARCO now covers the everyday core of Figma's creation toolbar, and several workflows are already competitive: local-first operation, offline availability, dependency-free deployment, auto layout, vector drawing, components, variables, prototyping, export and dev inspection. It is not yet truthful to call every tool fully equal to current Figma. The largest remaining tool-level gaps are advanced vector-edit subtools, ellipse arcs/rings, parametric shape controls, richer image cropping/media, and drag-created area text. These should be addressed as engine features rather than cosmetic toolbar additions.

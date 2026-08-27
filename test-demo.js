@@ -1,4 +1,4 @@
-/* Penfig — local test demo
+/* ARCO — local test demo
  *
  * Runs the REAL app code — the very modules index.html loads (model, layout,
  * render, tokens, figconv, components, plugins, …) — through a series of
@@ -194,7 +194,7 @@
 
     // ---------------------------------------------------------------- 8
     {
-      name: 'Plugin sandbox — async penfig API over whitelisted RPC',
+      name: 'Plugin sandbox — async arco API over whitelisted RPC',
       run: async () => {
         const M = window.Model, P = window.Plugins;
         const App = {
@@ -206,10 +206,10 @@
         const rn = M.makeNode('rect', { x: 0, y: 0, w: 10, h: 10, name: 'plugin-target' });
         M.attach(App.doc, App.page, null, rn);
         const r = await P.run(`
-          const doc = await penfig.doc();
-          const target = (await penfig.listNodes()).find(x => x.name === 'plugin-target');
-          await penfig.setPos(target.id, 42, 43);
-          const after = await penfig.getNode(target.id);
+          const doc = await arco.doc();
+          const target = (await arco.listNodes()).find(x => x.name === 'plugin-target');
+          await arco.setPos(target.id, 42, 43);
+          const after = await arco.getNode(target.id);
           return 'doc=' + doc.name + ' moved to ' + after.x + ',' + after.y;
         `, App);
         let blocked = null;
@@ -318,7 +318,7 @@
           return { ok: true, skip: true, detail: 'skipped — served over file://; run via http to test this' };
         }
         if (!res.ok) {
-          return { ok: true, skip: true, detail: `skipped — fixtures/word-outline-stroke.fig not found (${res.status}); serve the app from the penfig/ folder` };
+          return { ok: true, skip: true, detail: `skipped — fixtures/word-outline-stroke.fig not found (${res.status}); serve the app from the arco/ folder` };
         }
         const bytes = new Uint8Array(await res.arrayBuffer());
         const rep = window.FigConv.importFig(bytes);
@@ -348,5 +348,5 @@
     return results;
   }
 
-  window.PenfigDemo = { checks, runAll, b64ToBytes };
+  window.ARCODemo = { checks, runAll, b64ToBytes };
 })();

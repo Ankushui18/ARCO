@@ -1,4 +1,4 @@
-# Penfig UX/UI Audit — Critic's List (v20, 2026-08-26)
+# ARCO UX/UI Audit — Critic's List (v20, 2026-08-26)
 
 Audited: dashboard, editor chrome, tool toolbar, layers/assets/pages/vars tabs,
 right inspector, context menus, command palette, comment pins, present mode,
@@ -40,7 +40,7 @@ Severity key:
 
 3. **Top bar center is empty dead space 99% of the session.**
    Figma shows the file name + page name + a sharing avatar cluster + a
-   zoom-percent in the middle; Penfig puts a "Dark/Light mode" segment there
+   zoom-percent in the middle; ARCO puts a "Dark/Light mode" segment there
    (two sun/moon icons) which is a setting you click once a month. The
    zoom% lives buried in the bottom-right zoom control; there is no
    collaboration-status, no "present" button, no quick-share.
@@ -53,7 +53,7 @@ Severity key:
    highlight.** When you click a dark shape on the dark #383838 canvas, the
    selection box is drawn in the Figma-blue accent — that works — but hover
    state on the canvas is "default" cursor only. Figma draws a subtle 1px
-   outline on hover; Penfig draws nothing. Users have no idea what is
+   outline on hover; ARCO draws nothing. Users have no idea what is
    clickable. Fix: add a hover-highlight pass in drawSelection
    (semi-transparent blue outline on the hovered node when tool==='move').
 
@@ -68,7 +68,7 @@ Severity key:
 
 6. **Pan / zoom muscle memory is broken.**
    - Figma/Sketch: Space+drag pans, trackpad pinch zooms, ⌘+scroll wheel
-     zooms. Penfig wheel: `wheel` listener does `preventDefault()` and
+     zooms. ARCO wheel: `wheel` listener does `preventDefault()` and
      treats plain wheel as pan (shift+wheel = horizontal), Ctrl-wheel =
      zoom. This is the opposite of Figma and will make every designer
      motion-sick within 30 seconds.
@@ -113,7 +113,7 @@ Severity key:
 
 9. **Right inspector has no "Design / Prototype / Inspect" tab
    switcher.** Figma groups the right rail into three tabs so the panel
-   never becomes a 3000px scroll. Penfig dumps everything (Position,
+   never becomes a 3000px scroll. ARCO dumps everything (Position,
    Size, Rotation, Constraints, Corner radius, Fills [n], Stroke,
    Effects, Auto layout, Layout [item], Text, Fill-mode, Export,
    Interactions) in one scrolling list. On a 768px-tall laptop, once you
@@ -124,7 +124,7 @@ Severity key:
 
 10. **Number inputs don't support scrubbing, math, or ↑/↓ nudge.**
     Figma lets you drag a label to scrub values, type `16+8` or `16*2`,
-    and press ↑/↓ (Shift+↑/↓ for 10x) to nudge. Penfig number inputs are
+    and press ↑/↓ (Shift+↑/↓ for 10x) to nudge. ARCO number inputs are
     plain `<input type="number">` — no scrub, no math, Shift+arrow
     doesn't step by 10, Tab-to-next works but Shift+Tab is intercepted
     by the browser (it blurs the textarea too). Fix: custom number
@@ -155,13 +155,13 @@ Severity key:
 13. **Selection handles are white 7px squares with no dark halo — on
     light/white fills they vanish entirely.**
     Figma draws a 1px blue outline AND white handle squares with a 1px
-    blue outline so they're visible on any background. Penfig handles
+    blue outline so they're visible on any background. ARCO handles
     render with a hard-coded white fill and no contrast border (look at
     drawSelection in render.js). Fix: always draw handles with accent
     border + white fill, 8px with 1.5px stroke, regardless of background.
 
 14. **Marquee selection is a thin blue 1px line with no fill.**
-    Figma uses a 1px blue outline + 10% blue fill. Penfig draws no
+    Figma uses a 1px blue outline + 10% blue fill. ARCO draws no
     fill (only a line) — very easy to lose track of when dragging on a
     dark canvas, especially at zoom. Fix: add `rgba(13,153,255,0.10)`
     fill to the marquee rect.
@@ -200,7 +200,7 @@ Severity key:
 
 20. **Toolbar tool buttons have the shortcut key (V, R, T…) in a tiny
     8px `.tool-key` span that only appears on hover.** Figma shows the
-    keycap inside the tooltip (e.g. "Text (T)") — Penfig has it in the
+    keycap inside the tooltip (e.g. "Text (T)") — ARCO has it in the
     `title` attribute, which is correct, but there's no visual way for
     a new user to discover shortcuts without hovering each button.
     Consider showing the keycap in the corner of the icon permanently
@@ -264,7 +264,7 @@ Severity key:
     selected.
 
 28. **Layer panel indent depth is only 12px; nested groups are hard to
-    scan.** Figma uses 16px + a 1px tree-connector line. Penfig uses a
+    scan.** Figma uses 16px + a 1px tree-connector line. ARCO uses a
     fixed padding-left (n*something small) with no connectors. Add a
     subtle vertical guide line or widen indent to 16px.
 
@@ -288,7 +288,7 @@ Severity key:
 
 32. **Export is a button with no panel.** Figma has an Export section at
     the BOTTOM of the inspector showing the format/size suffix (e.g.
-    "Export 1x PNG", "+ Add export setting"). Penfig opens a modal
+    "Export 1x PNG", "+ Add export setting"). ARCO opens a modal
     every time. A modal is OK for batch export, but a quick "Export
     selection as…" row in the inspector (with 1x/2x SVGs PNGs PDF JPG)
     is the standard designers expect.
@@ -322,7 +322,7 @@ Severity key:
 37. **Grid (⇧G) draws but there is no UI to change grid size/color.**
     Figma adds a "Layout grid" section to the inspector when a frame
     is selected, supporting columns/rows/grid with color + opacity.
-    Penfig has grid toggle only.
+    ARCO has grid toggle only.
 
 38. **"Present" mode exists (⇧K) but the present-bar exit button says
     "X Exit" with a close icon at the far right; there are no prev/next
@@ -385,8 +385,8 @@ Severity key:
     Export .fig" actions but the buttons appear instantly with no fade.
     Add a 120ms fade/slide transition and a right-click menu on the
     card for parity.**
-50. **The Penfig logo in the dashboard is just the letter "A" chevron
-    logo icon + the word "Penfig". Add a proper app icon / mark (the
+50. **The ARCO logo in the dashboard is just the letter "A" chevron
+    logo icon + the word "ARCO". Add a proper app icon / mark (the
     current `logo` path `M4 20L12 4L20 20M7.5 14.5H16.5` draws a sharp
     "A" — tweak it to be more distinctive, a little rounder, maybe add
     a subtle serif tail so it reads as a design-tool logo, not a

@@ -1,4 +1,4 @@
-# Penfig Audit — Issues Found & Fixed (v20, 2026-08-26)
+# ARCO Audit — Issues Found & Fixed (v20, 2026-08-26)
 
 Full source audit across all 29 JS files + CSS + HTML + SW. Below is every bug
 that was found and fixed this pass.

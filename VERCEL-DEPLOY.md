@@ -1,10 +1,10 @@
-# Penfig — Vercel Test Build
+# ARCO — Vercel Test Build
 
 ## Deploy on Vercel
 
 Create a new Vercel project from this repository and set:
 
-- Root Directory: `penfig`
+- Root Directory: `arco`
 - Framework Preset: `Other`
 - Build Command: leave empty
 - Output Directory: `.`

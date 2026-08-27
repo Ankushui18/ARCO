@@ -1,0 +1,17 @@
+{
+  "name": "arco-design-tool",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ARCO — professional visual design tool",
+  "type": "module",
+  "scripts": {
+    "dev": "python3 -m http.server 8080 --bind 127.0.0.1",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "desktop:build:windows": "tauri build --target x86_64-pc-windows-msvc",
+    "desktop:build:mac": "tauri build --target universal-apple-darwin"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0"
+  }
+}

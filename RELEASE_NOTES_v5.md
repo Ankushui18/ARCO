@@ -1,4 +1,4 @@
-# Penfig Studio v5 — Competitive Workflow Pass
+# ARCO v5 — Competitive Workflow Pass
 
 This release focuses on making existing capabilities faster, clearer, and more professional rather than inflating the feature count.
 

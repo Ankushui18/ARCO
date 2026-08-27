@@ -1,4 +1,4 @@
-/* render.js — Penfig canvas renderer.
+/* render.js — ARCO canvas renderer.
  *
  * Coordinate model (SINGLE SOURCE OF TRUTH — keep in sync with world.js):
  *   n.x, n.y     — parent-local position (where Layout places children).

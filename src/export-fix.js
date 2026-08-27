@@ -61,6 +61,17 @@
     if (!(blob instanceof Blob)) blob = new Blob([blob]);
     filename = filename || 'export.bin';
 
+    // Native desktop save comes first. Browser behavior remains unchanged.
+    if (global.ARCOPlatform && global.ARCOPlatform.isDesktop) {
+      try {
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const saved = await global.ARCOPlatform.saveFile(bytes, filename);
+        if (saved) return 'native';
+      } catch (e) {
+        if (e && /cancel/i.test(String(e.message || e))) return 'abort';
+      }
+    }
+
     if (typeof window.showSaveFilePicker === 'function') {
       try {
         const ext = '.' + extOf(filename);
@@ -103,7 +114,7 @@
     return saveBlob(blob, filename);
   }
 
-  global.PenfigSave = { saveBlob, downloadBytes, showSaveSheet };
+  global.ARCOSave = { saveBlob, downloadBytes, showSaveSheet };
 
   ready(function () {
     const App = global.App;
@@ -274,7 +285,7 @@
         '<button type="button" data-x="page-pdf">' + Ico('pdf', { size: 13 }) + ' PDF</button>' +
         '<hr><div class="pf-title">File formats</div>' +
         '<button type="button" data-x="fig">' + Ico('fig', { size: 13 }) + ' Figma file (.fig)</button>' +
-        '<button type="button" data-x="pfg">' + Ico('pfg', { size: 13 }) + ' Penfig file (.pfg)</button>' +
+        '<button type="button" data-x="pfg">' + Ico('pfg', { size: 13 }) + ' ARCO file (.pfg)</button>' +
         '<hr><div class="pf-title">Design tokens</div>' +
         '<button type="button" data-x="tok-json">' + Ico('code', { size: 12 }) + ' JSON (W3C DTCG)</button>' +
         '<button type="button" data-x="tok-css">' + Ico('css', { size: 12 }) + ' CSS variables</button>';

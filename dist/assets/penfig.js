@@ -1,4 +1,4 @@
-/* Penfig Studio deterministic production bundle. */
+/* ARCO deterministic production bundle. */
 
 /* ---- assets/figio.js ---- */
 var FigIOBundle=(()=>{var ka=Object.defineProperty;var Dr=Object.getOwnPropertyDescriptor;var hr=Object.getOwnPropertyNames;var Er=Object.prototype.hasOwnProperty;var Sr=(e,s)=>{for(var a in s)ka(e,a,{get:s[a],enumerable:!0})},gr=(e,s,a,l)=>{if(s&&typeof s=="object"||typeof s=="function")for(let r of hr(s))!Er.call(e,r)&&r!==a&&ka(e,r,{get:()=>s[r],enumerable:!(l=Dr(s,r))||l.enumerable});return e};var Tr=e=>gr(ka({},"__esModule",{value:!0}),e);var di={};Sr(di,{FIGMA_SCHEMA:()=>vr,compiledFigmaSchema:()=>Is,default:()=>ui,parseFigBinary:()=>Ma,parseFigFile:()=>mr,sanitizeForSchema:()=>Me,sha1:()=>or,writeFig:()=>Ar});var Na=new Int32Array(1),_s=new Float32Array(Na.buffer),ua=class{constructor(e){if(e&&!(e instanceof Uint8Array))throw new Error("Must initialize a ByteBuffer with a Uint8Array");this._data=e||new Uint8Array(256),this._index=0,this.length=e?e.length:0}toUint8Array(){return this._data.subarray(0,this.length)}readByte(){if(this._index+1>this._data.length)throw new Error("Index out of bounds");return this._data[this._index++]}readByteArray(){let e=this.readVarUint(),s=this._index,a=s+e;if(a>this._data.length)throw new Error("Read array out of bounds");this._index=a;let l=new Uint8Array(e);return l.set(this._data.subarray(s,a)),l}readVarFloat(){let e=this._index,s=this._data,a=s.length;if(e+1>a)throw new Error("Index out of bounds");let l=s[e];if(l===0)return this._index=e+1,0;if(e+4>a)throw new Error("Index out of bounds");let r=l|s[e+1]<<8|s[e+2]<<16|s[e+3]<<24;return this._index=e+4,r=r<<23|r>>>9,Na[0]=r,_s[0]}readVarUint(){let e=0,s=0;do{var a=this.readByte();e|=(a&127)<<s,s+=7}while(a&128&&s<35);return e>>>0}readVarInt(){let e=this.readVarUint()|0;return e&1?~(e>>>1):e>>>1}readVarUint64(){let e=BigInt(0),s=BigInt(0),a=BigInt(7),l;for(;(l=this.readByte())&128&&s<56;)e|=BigInt(l&127)<<s,s+=a;return e|=BigInt(l)<<s,e}readVarInt64(){let e=this.readVarUint64(),s=BigInt(1),a=e&s;return e>>=s,a?~e:e}readString(){let e="";for(;;){let s,a=this.readByte();if(a<192)s=a;else{let l=this.readByte();if(a<224)s=(a&31)<<6|l&63;else{let r=this.readByte();if(a<240)s=(a&15)<<12|(l&63)<<6|r&63;else{let t=this.readByte();s=(a&7)<<18|(l&63)<<12|(r&63)<<6|t&63}}}if(s===0)break;s<65536?e+=String.fromCharCode(s):(s-=65536,e+=String.fromCharCode((s>>10)+55296,(s&1023)+56320))}return e}_growBy(e){if(this.length+e>this._data.length){let s=new Uint8Array(this.length+e<<1);s.set(this._data),this._data=s}this.length+=e}writeByte(e){let s=this.length;this._growBy(1),this._data[s]=e}writeByteArray(e){this.writeVarUint(e.length);let s=this.length;this._growBy(e.length),this._data.set(e,s)}writeVarFloat(e){let s=this.length;_s[0]=e;let a=Na[0];if(a=a>>>23|a<<9,(a&255)===0){this.writeByte(0);return}this._growBy(4);let l=this._data;l[s]=a,l[s+1]=a>>8,l[s+2]=a>>16,l[s+3]=a>>24}writeVarUint(e){if(e<0||e>4294967295)throw new Error("Outside uint range: "+e);do{let s=e&127;e>>>=7,this.writeByte(e?s|128:s)}while(e)}writeVarInt(e){if(e<-2147483648||e>2147483647)throw new Error("Outside int range: "+e);this.writeVarUint((e<<1^e>>31)>>>0)}writeVarUint64(e){if(typeof e=="string")e=BigInt(e);else if(typeof e!="bigint")throw new Error("Expected bigint but got "+typeof e+": "+e);if(e<0||e>BigInt("0xFFFFFFFFFFFFFFFF"))throw new Error("Outside uint64 range: "+e);let s=BigInt(127),a=BigInt(7);for(let l=0;e>s&&l<8;l++)this.writeByte(Number(e&s)|128),e>>=a;this.writeByte(Number(e))}writeVarInt64(e){if(typeof e=="string")e=BigInt(e);else if(typeof e!="bigint")throw new Error("Expected bigint but got "+typeof e+": "+e);if(e<-BigInt("0x8000000000000000")||e>BigInt("0x7FFFFFFFFFFFFFFF"))throw new Error("Outside int64 range: "+e);let s=BigInt(1);this.writeVarUint64(e<0?~(e<<s):e<<s)}writeString(e){let s;for(let a=0;a<e.length;a++){let l=e.charCodeAt(a);if(a+1===e.length||l<55296||l>=56320)s=l;else{let r=e.charCodeAt(++a);s=(l<<10)+r+-56613888}if(s===0)throw new Error("Cannot encode a string containing the null character");s<128?this.writeByte(s):(s<2048?this.writeByte(s>>6&31|192):(s<65536?this.writeByte(s>>12&15|224):(this.writeByte(s>>18&7|240),this.writeByte(s>>12&63|128)),this.writeByte(s>>6&63|128)),this.writeByte(s&63|128))}this.writeByte(0)}};function $(e){return JSON.stringify(e)}function Ms(e,s,a){var l=new Error(e);throw l.line=s,l.column=a,l}function Ir(e,s){let a=[],l="  ";a.push("function (bb) {"),a.push("  var result = {};"),a.push("  if (!(bb instanceof this.ByteBuffer)) {"),a.push("    bb = new this.ByteBuffer(bb);"),a.push("  }"),a.push(""),e.kind==="MESSAGE"&&(a.push("  while (true) {"),a.push("    switch (bb.readVarUint()) {"),a.push("      case 0:"),a.push("        return result;"),a.push(""),l="        ");for(let r=0;r<e.fields.length;r++){let t=e.fields[r],i;switch(t.type){case"bool":{i="!!bb.readByte()";break}case"byte":{i="bb.readByte()";break}case"int":{i="bb.readVarInt()";break}case"uint":{i="bb.readVarUint()";break}case"float":{i="bb.readVarFloat()";break}case"string":{i="bb.readString()";break}case"int64":{i="bb.readVarInt64()";break}case"uint64":{i="bb.readVarUint64()";break}default:{let n=s[t.type];n?n.kind==="ENUM"?i="this["+$(n.name)+"][bb.readVarUint()]":i="this["+$("decode"+n.name)+"](bb)":Ms("Invalid type "+$(t.type)+" for field "+$(t.name),t.line,t.column)}}e.kind==="MESSAGE"&&a.push("      case "+t.value+":"),t.isArray?t.isDeprecated?t.type==="byte"?a.push(l+"bb.readByteArray();"):(a.push(l+"var length = bb.readVarUint();"),a.push(l+"while (length-- > 0) "+i+";")):t.type==="byte"?a.push(l+"result["+$(t.name)+"] = bb.readByteArray();"):(a.push(l+"var length = bb.readVarUint();"),a.push(l+"var values = result["+$(t.name)+"] = Array(length);"),a.push(l+"for (var i = 0; i < length; i++) values[i] = "+i+";")):t.isDeprecated?a.push(l+i+";"):a.push(l+"result["+$(t.name)+"] = "+i+";"),e.kind==="MESSAGE"&&(a.push("        break;"),a.push(""))}return e.kind==="MESSAGE"?(a.push("      default:"),a.push('        throw new Error("Attempted to parse invalid message");'),a.push("    }"),a.push("  }")):a.push("  return result;"),a.push("}"),a.join(`
@@ -9,10 +9,10 @@ var FigIOBundle=(()=>{var ka=Object.defineProperty;var Dr=Object.getOwnPropertyD
 window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIOBundle);
 
 /* ---- src/icons.js ---- */
-/* icons.js — inline SVG icon set for Penfig.
+/* icons.js — inline SVG icon set for ARCO.
  * Every icon is a 24×24 viewBox path (or multi-path). Use icon(name, cls, size).
  * No external assets. All icons match Figma/Sketch visual language with
- * Penfig's stroke weight (1.5) and rounded linecaps/joins.
+ * ARCO's stroke weight (1.5) and rounded linecaps/joins.
  */
 (function(global) {
   'use strict';
@@ -373,7 +373,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
 
 
 /* ---- src/model.js ---- */
-/* model.js — Penfig document model (Figma-style scene graph)
+/* model.js — ARCO document model (Figma-style scene graph)
  *
  * Doc
  * └─ pages[]     (Figma "pages" / CANVAS nodes)
@@ -745,8 +745,8 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
   // asynchronously (debounced), so a save can never block the editor.
   // `await store.init()` must run before first use; `store.flush()` awaits
   // the pending write (used on exit and by tests).
-  const LS_KEY = 'penfig.files.v1';
-  const IDB_NAME = 'penfig-files';
+  const LS_KEY = 'arco.files.v1';
+  const IDB_NAME = 'arco-files';
   const IDB_VER = 1;
   const IDB_STORE = 'files';
   const TRANSIENT_NODE_KEYS = ['_wt', '_wc', '_w', '_l', '_measured', '_cSize', '_rotLabel', '_cloneMap', '_srcTexts', '_pfid'];
@@ -834,9 +834,9 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
 
     _readLS() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch (e) { return []; } },
     _toastFull(msg) {
-      if (this._warned) { console.warn('penfig: ' + msg); return; }
+      if (this._warned) { console.warn('arco: ' + msg); return; }
       this._warned = true;
-      console.warn('penfig: ' + msg);
+      console.warn('arco: ' + msg);
       const App = typeof globalThis !== 'undefined' ? globalThis.App : null;
       if (App && typeof App.toast === 'function') {
         App.toast(msg, 10000, [
@@ -1076,7 +1076,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
 
 
 /* ---- src/layout.js ---- */
-/* layout.js — Penfig auto-layout engine.
+/* layout.js — ARCO auto-layout engine.
  *
  * Places children in PARENT-LOCAL coordinates and writes n.x/n.y for flow
  * children (AL-placed). n.x/n.y for manually-placed children are the
@@ -1632,7 +1632,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
 
 
 /* ---- src/render.js ---- */
-/* render.js — Penfig canvas renderer.
+/* render.js — ARCO canvas renderer.
  *
  * Coordinate model (SINGLE SOURCE OF TRUTH — keep in sync with world.js):
  *   n.x, n.y     — parent-local position (where Layout places children).
@@ -2795,7 +2795,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
 
 
 /* ---- src/tokens.js ---- */
-/* tokens.js — Penfig design tokens (Figma-style variables with modes).
+/* tokens.js — ARCO design tokens (Figma-style variables with modes).
  *
  * Model (mirrors Figma's .fig VARIABLE_SET / VARIABLE nodes):
  *   doc.vars = {
@@ -3029,7 +3029,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
   function exportW3C(doc) {
     const out = {};
     out.$schema = 'https://design-tokens.github.io/community-group/format/schema.json';
-    out.$description = 'Exported from ' + doc.name + ' (Penfig)';
+    out.$description = 'Exported from ' + doc.name + ' (ARCO)';
     for (const set of doc.vars.sets) {
       let bucket = out;
       const parts = set.name.split('/').filter(Boolean);
@@ -3054,7 +3054,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
   function exportCSS(doc, modeId) {
     const mid = modeId || doc.vars.defaultMode;
     const modeName = ((doc.vars.modes.find(m => m.id === mid) || { name: 'mode' }).name).toLowerCase().replace(/\s+/g, '-');
-    let css = '/* Penfig tokens — ' + doc.name + ' — mode: ' + modeName + ' */\n';
+    let css = '/* ARCO tokens — ' + doc.name + ' — mode: ' + modeName + ' */\n';
     css += doc.vars.modes.length > 1 ? ':root[data-mode="' + modeName + '"], :root {\n' : ':root {\n';
     for (const set of doc.vars.sets) {
       css += '  /* ' + set.name + ' */\n';
@@ -3121,14 +3121,14 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
 
 
 /* ---- src/figconv.js ---- */
-/* figconv.js — Figma .fig ⇄ Penfig model conversion.
+/* figconv.js — Figma .fig ⇄ ARCO model conversion.
  *
  * Import:  .fig (zip) → canvas.fig (fig-kiwi) → kiwi JSON (NodeChanges)
- *          → tree → Penfig document.  Uses the schema EMBEDDED in the file,
+ *          → tree → ARCO document.  Uses the schema EMBEDDED in the file,
  *          so older and newer Figma exports both decode (old + new field
  *          names are both handled).
  *
- * Export:  Penfig document → kiwi NodeChanges (Figma's current schema, 550
+ * Export:  ARCO document → kiwi NodeChanges (Figma's current schema, 550
  *          defs) → fig-kiwi chunks → zip with meta.json + thumbnail + images.
  *          The result is a real .fig file Figma can open: frames, rects,
  *          ellipses, lines, text, auto layout, fills/strokes/effects,
@@ -3405,7 +3405,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
     };
   }
 
-  // Convert Figma's 2×3 matrix (maps local origin = top-left) into Penfig's
+  // Convert Figma's 2×3 matrix (maps local origin = top-left) into ARCO's
   // parent-local x/y + center-pivot rotation. The local box's center
   // (hw,hh) must map, under this matrix, to the world center (x+hw,y+hh) —
   // that identity holds regardless of rotation/flip, so x/y is solved
@@ -3433,7 +3433,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
     if (Math.abs(rot) > 1e-4) n.rotation = rot;
   }
 
-  // Inverse of applyFigTransform: Penfig node -> Figma transform matrix.
+  // Inverse of applyFigTransform: ARCO node -> Figma transform matrix.
   // Kept as the single source of truth for both directions so a future
   // change to one can't silently drift out of sync with the other (see
   // the position round-trip regression covered by test-fig-transform.js).
@@ -3743,7 +3743,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
     M.attach(doc, page, parentId, n);
     report.nodes++;
     const rawRef = byId.get(gid(fn));
-    if (rawRef) rawRef._pfid = n.id; // guid → penfig id (for instance rebinding)
+    if (rawRef) rawRef._pfid = n.id; // guid → arco id (for instance rebinding)
     // children — O(k) via the prebuilt map. The old getKids scanned every
     // node for every parent (O(n²)) and froze real files.
     const subKids = sortKids ? sortKids(gid(fn)) : [];
@@ -4018,7 +4018,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
     };
     const bytes = global.FigIO.writeFig({
       message,
-      meta: { file_name: doc.name, last_editor: 'Penfig', version: 0 },
+      meta: { file_name: doc.name, last_editor: 'ARCO', version: 0 },
       thumbnail: opts.thumbnail ? u8FromB64(opts.thumbnail.split(',')[1]) : null,
       images: [...unique.entries()].map(([h, b]) => [h, u8FromB64(b)]),
       version: 101,
@@ -4043,7 +4043,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
   function exportNode(page, n, parentGuid, guid, next, doc, ctx, guidOf) {
     const out = { guid, phase: 'CREATED', name: n.name };
     const typeMap = { frame: 'FRAME', rect: 'RECTANGLE', ellipse: 'ELLIPSE', line: 'LINE', text: 'TEXT', vector: 'VECTOR', instance: 'INSTANCE' };
-    // This openfig v101 schema has no COMPONENT NodeType — component masters
+    // This oarco v101 schema has no COMPONENT NodeType — component masters
     // are the legacy SYMBOL type (which is also why the instance→master
     // reference field is overriddenSymbolID, not mainComponentGuid).
     out.type = (n.type === 'frame' && n.isComponent) ? 'SYMBOL' : (typeMap[n.type] || 'FRAME');
@@ -4100,7 +4100,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
       } catch (e) { /* unencodable path: vector exported without geometry */ }
     }
     if (n.type === 'instance' && n.componentId && guidOf) {
-      // Bind the instance to its component. The v101 openfig schema has no
+      // Bind the instance to its component. The v101 oarco schema has no
       // mainComponentGuid field, so the binding is carried in the legacy
       // overriddenSymbolID GUID (documented deviation): our importer re-binds
       // it; real Figma keeps the cloned subtree (visual parity) but sees the
@@ -4293,7 +4293,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
 
 
 /* ---- src/fonts.js ---- */
-/* fonts.js — Penfig Font Manager
+/* fonts.js — ARCO Font Manager
  *
  * Provides:
  *   - Curated list of Google Fonts (loaded on demand via FontFace API)
@@ -4840,7 +4840,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
   };
 
   // ============================================================ shared libraries
-  // Figma's team libraries are a cloud feature; Penfig's equivalent links
+  // Figma's team libraries are a cloud feature; ARCO's equivalent links
   // OTHER LOCAL FILES as libraries (the Assets tab manages the links).
   // Library instances remember libraryFileId; updates re-clone from the
   // source file, which is read live from the local store, so editing the
@@ -5785,7 +5785,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
       const name = 'Guest-' + Math.floor(100 + Math.random() * 900);
       const color = COLORS[Math.floor(Math.random() * COLORS.length)];
       this.self = { id: M.uid('peer-'), name, color };
-      this.ch = new BroadcastChannel('penfig-collab-' + docId);
+      this.ch = new BroadcastChannel('arco-collab-' + docId);
       const self = this;
       this.ch.onmessage = (e) => self._onMsg(e.data);
       this.ch.postMessage({ t: 'hello', id: this.self.id, name, color });
@@ -5883,7 +5883,7 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
 /* plugins.js — Figma-style plugin system (sandboxed plugins).
  *
  * Headless plugins run against a small, explicit, ASYNC API surface
- * (`penfig`). In a real browser the code executes in a dedicated Web
+ * (`arco`). In a real browser the code executes in a dedicated Web
  * Worker — a separate JS realm that cannot reach the host's window,
  * document, or localStorage. The worker talks to the app only through a
  * whitelisted postMessage RPC (see handleRpc); any call not on the list
@@ -5912,17 +5912,17 @@ window.FigIO = window.FigIOBundle && (window.FigIOBundle.default || window.FigIO
         id: 'arrange', name: 'Arrange selection in a grid',
         desc: 'Lays selected nodes out in an equal grid with 24px gaps.',
         code: `
-const sel = (await penfig.selection()).ids;
+const sel = (await arco.selection()).ids;
 if (!sel.length) return 'Select at least one node first.';
-await penfig.history.begin();
+await arco.history.begin();
 const cols = Math.ceil(Math.sqrt(sel.length));
 const gap = 24, size = 120;
 for (let i = 0; i < sel.length; i++) {
   const row = Math.floor(i / cols), col = i % cols;
-  await penfig.setPos(sel[i], col * (size + gap), row * (size + gap));
+  await arco.setPos(sel[i], col * (size + gap), row * (size + gap));
 }
-await penfig.history.end();
-await penfig.refresh();
+await arco.history.end();
+await arco.refresh();
 return 'Arranged ' + sel.length + ' node(s) in ' + cols + '-column grid.';
 `,
       },
@@ -5930,16 +5930,16 @@ return 'Arranged ' + sel.length + ' node(s) in ' + cols + '-column grid.';
         id: 'rename', name: 'Number selection (01 · name)',
         desc: 'Prefixes selected layer names with zero-padded indexes.',
         code: `
-const sel = (await penfig.selection()).ids;
+const sel = (await arco.selection()).ids;
 if (!sel.length) return 'Nothing selected.';
-await penfig.history.begin();
+await arco.history.begin();
 let i = 0;
 for (const id of sel) {
-  const n = await penfig.getNode(id);
-  if (n && !/^\\d+ · /.test(n.name)) { i++; await penfig.setProps(id, { name: String(i).padStart(2, '0') + ' · ' + n.name }); }
+  const n = await arco.getNode(id);
+  if (n && !/^\\d+ · /.test(n.name)) { i++; await arco.setProps(id, { name: String(i).padStart(2, '0') + ' · ' + n.name }); }
 }
-await penfig.history.end();
-await penfig.refresh();
+await arco.history.end();
+await arco.refresh();
 return 'Renamed ' + sel.length + ' node(s).';
 `,
       },
@@ -5947,14 +5947,14 @@ return 'Renamed ' + sel.length + ' node(s).';
         id: 'mode', name: 'Cycle token mode',
         desc: 'Moves the design to the next variable mode (Light → Dark → …).',
         code: `
-const doc = await penfig.doc();
+const doc = await arco.doc();
 const modes = doc.modes;
 const i = modes.findIndex(m => m.id === doc.defaultMode);
-await penfig.history.begin();
+await arco.history.begin();
 const next = modes[(i + 1) % modes.length];
-await penfig.setMode(next.id);
-await penfig.history.end();
-await penfig.refresh();
+await arco.setMode(next.id);
+await arco.history.end();
+await arco.refresh();
 return 'Mode → ' + next.name;
 `,
       },
@@ -5962,14 +5962,14 @@ return 'Mode → ' + next.name;
         id: 'outline', name: 'Outline all text',
         desc: 'Gives every text node in the page a visible 1px stroke.',
         code: `
-const nodes = await penfig.listNodes();
-await penfig.history.begin();
+const nodes = await arco.listNodes();
+await arco.history.begin();
 let n = 0;
 for (const s of nodes) {
-  if (s.type === 'text') { await penfig.setProps(s.id, { stroke: { color: '#000000', width: 1, opacity: 0.3, align: 'outside', token: null, visible: true } }); n++; }
+  if (s.type === 'text') { await arco.setProps(s.id, { stroke: { color: '#000000', width: 1, opacity: 0.3, align: 'outside', token: null, visible: true } }); n++; }
 }
-await penfig.history.end();
-await penfig.refresh();
+await arco.history.end();
+await arco.refresh();
 return 'Outlined ' + n + ' text node(s).';
 `,
       },
@@ -5978,7 +5978,7 @@ return 'Outlined ' + n + ' text node(s).';
         desc: 'A plugin with a live UI panel — lists token modes, switches on click, toasts the result.',
         code: '',
         ui: `
-const doc = await penfig.call('doc');
+const doc = await arco.call('doc');
 const box = document.createElement('div');
 box.style.cssText = 'font:13px/1.6 system-ui,sans-serif';
 box.innerHTML =
@@ -5996,17 +5996,17 @@ paint(doc);
 modes.addEventListener('click', async (e) => {
   const b = e.target.closest('button[data-m]');
   if (!b) return;
-  await penfig.call('setMode', b.getAttribute('data-m'));
-  paint(await penfig.call('doc'));
-  penfig.toast('Mode switched');
+  await arco.call('setMode', b.getAttribute('data-m'));
+  paint(await arco.call('doc'));
+  arco.toast('Mode switched');
 });
 `,
       },
     ],
 
     custom: {
-      all() { try { return JSON.parse(localStorage.getItem('penfig.plugins.v1')) || []; } catch (e) { return []; } },
-      save(list) { try { localStorage.setItem('penfig.plugins.v1', JSON.stringify(list)); } catch (e) { } },
+      all() { try { return JSON.parse(localStorage.getItem('arco.plugins.v1')) || []; } catch (e) { return []; } },
+      save(list) { try { localStorage.setItem('arco.plugins.v1', JSON.stringify(list)); } catch (e) { } },
       add(p) { const l = this.all(); p.id = M.uid('pl-'); l.push(p); this.save(l); return p; },
       remove(id) { this.save(this.all().filter(p => p.id !== id)); },
     },
@@ -6076,10 +6076,10 @@ modes.addEventListener('click', async (e) => {
       }
     },
 
-    // build a penfig proxy over a call(name, ...args) function —
+    // build a arco proxy over a call(name, ...args) function —
     // identical shape in worker mode (calls become Promises) and local
     // mode (calls resolve synchronously), so plugin code can just `await`.
-    _penfigProxy(call) {
+    _arcoProxy(call) {
       return {
         doc: () => call('doc'),
         setMode: (id) => call('setMode', id),
@@ -6137,7 +6137,7 @@ modes.addEventListener('click', async (e) => {
 
     // --------------------------------------------------------------- worker
     // Hard sandbox: the plugin code runs in a Web Worker (separate realm).
-    // It only gets the penfig RPC proxy + a console stub; no host window,
+    // It only gets the arco RPC proxy + a console stub; no host window,
     // document, or localStorage. All state changes come back over the
     // whitelisted postMessage RPC. 15s timeout, then the worker is killed.
     _runWorker(code, App) {
@@ -6183,7 +6183,7 @@ modes.addEventListener('click', async (e) => {
       });
     },
 
-    // script that runs INSIDE the worker: penfig proxy → postMessage RPC.
+    // script that runs INSIDE the worker: arco proxy → postMessage RPC.
     _workerBootstrap() {
       return `
 (function () {
@@ -6209,7 +6209,7 @@ modes.addEventListener('click', async (e) => {
       postMessage({ t: 'call', seq: s, name: name, args: args });
     });
   }
-  var penfig = {
+  var arco = {
     doc: function () { return call('doc'); },
     setMode: function (id) { return call('setMode', id); },
     selection: function () { return call('selection'); },
@@ -6239,8 +6239,8 @@ modes.addEventListener('click', async (e) => {
     }
     if (m.t !== 'run') return;
     try {
-      var fn = new Function('penfig', 'console', '"use strict";\\nreturn (async () => {\\n' + m.code + '\\n})();');
-      var p = fn(penfig, consoleStub);
+      var fn = new Function('arco', 'console', '"use strict";\\nreturn (async () => {\\n' + m.code + '\\n})();');
+      var p = fn(arco, consoleStub);
       Promise.resolve(p).then(
         function (r) { postMessage({ t: 'result', result: r == null ? null : String(r) }); },
         function (err) { postMessage({ t: 'error', error: String(err && err.message || err) }); });
@@ -6254,7 +6254,7 @@ modes.addEventListener('click', async (e) => {
 
     // ------------------------------------------------------------- plugin UI
     // bridge script injected into the UI iframe before the plugin code.
-    // UI code calls penfig.call(name, ...args) → parent postMessage →
+    // UI code calls arco.call(name, ...args) → parent postMessage →
     // handleRpc (same whitelist as headless plugins).
     _uiBridge() {
       return `
@@ -6270,7 +6270,7 @@ modes.addEventListener('click', async (e) => {
     pending.splice(pending.indexOf(entry), 1);
     if (m.error) entry.cb(new Error(m.error)); else entry.cb(m.result);
   });
-  window.penfig = {
+  window.arco = {
     call: function (name) {
       var args = Array.prototype.slice.call(arguments, 1);
       var s = ++seq;
@@ -6279,8 +6279,8 @@ modes.addEventListener('click', async (e) => {
         parent.postMessage({ t: 'pf-rpc', seq: s, name: name, args: args }, '*');
       });
     },
-    history: { begin: function () { return window.penfig.call('historyBegin'); }, end: function () { return window.penfig.call('historyEnd'); } },
-    toast: function (m) { return window.penfig.call('toast', m); }
+    history: { begin: function () { return window.arco.call('historyBegin'); }, end: function () { return window.arco.call('historyEnd'); } },
+    toast: function (m) { return window.arco.call('toast', m); }
   };
 })();
 </script>`;
@@ -6344,7 +6344,7 @@ modes.addEventListener('click', async (e) => {
 
 
 /* ---- src/pen.js ---- */
-/* pen.js — Penfig vector engine (spec §6/§8): the path node model used by the
+/* pen.js — ARCO vector engine (spec §6/§8): the path node model used by the
  * Pen tool and node editor. Pure functions — no DOM — so the whole engine is
  * unit-testable headlessly.
  *
@@ -6620,7 +6620,7 @@ modes.addEventListener('click', async (e) => {
 
 
 /* ---- src/boolean.js ---- */
-/* boolean.js — Penfig vector operations on REAL geometry (spec §7–8):
+/* boolean.js — ARCO vector operations on REAL geometry (spec §7–8):
  * union / subtract / intersect / exclude, flatten, offset & outline stroke,
  * plus the §7 regular shapes (polygon / star / triangle).
  *
@@ -7108,7 +7108,7 @@ modes.addEventListener('click', async (e) => {
  * Shortcuts.dispatch for a binding), (b) the shortcuts modal (rendered from
  * the same table), and (c) conflict detection (Shortcuts.conflicts() —
  * tested headlessly). Figma-standard keys, per the spec's compatibility rule:
- * Figma interaction model + Figma shortcuts, Penfig identity.
+ * Figma interaction model + Figma shortcuts, ARCO identity.
  *
  * Entry shape: { keys, label, group, run }
  *   keys — 'v', 'mod+c', 'shift+2', 'shift+k', 'delete', 'space' …
@@ -7411,7 +7411,7 @@ modes.addEventListener('click', async (e) => {
 
 
 /* ---- src/ui-dashboard.js ---- */
-/* ui-dashboard.js — Penfig dashboard (Figma-style file manager) */
+/* ui-dashboard.js — ARCO dashboard (Figma-style file manager) */
 (function (global) {
   'use strict';
   const M = global.Model;
@@ -7457,7 +7457,7 @@ modes.addEventListener('click', async (e) => {
     nav.al.gap = { n: 12, tok: null };
     nav.al.main = 'start'; nav.al.cross = 'center';
     const logo = M.makeNode('text', { name: 'Logo', w: 110, h: 24 });
-    logo.text = { ...logo.text, content: 'Penfig', size: 20, weight: 700, token: primary, font: 'Inter' };
+    logo.text = { ...logo.text, content: 'ARCO', size: 20, weight: 700, token: primary, font: 'Inter' };
     logo.fills = [{ type: 'solid', color: '#0d99ff', opacity: 1, token: primary }];
     M.attach(doc, page, nav.id, logo);
     ['Home', 'Design', 'Tokens', 'Docs'].forEach((t, i) => {
@@ -7576,7 +7576,7 @@ modes.addEventListener('click', async (e) => {
         <aside class="db-side">
           <div class="db-logo">
             ${Ico('logo', { size: 22 })}
-            <div><b>Penfig</b><div class="db-logo-sub">Design, offline.</div></div>
+            <div><b>ARCO</b><div class="db-logo-sub">Design, offline.</div></div>
           </div>
           <nav class="db-nav">
             <a class="active" href="#/">${Ico('recent', { size: 14 })}<span>Recents</span></a>
@@ -7587,7 +7587,7 @@ modes.addEventListener('click', async (e) => {
           <div class="db-side-foot">
             <button id="db-import" class="db-btn secondary">${Ico('file_import', { size: 14 })} Import .fig / .pfg…</button>
             <div class="db-tip">
-              Penfig is an offline-first design tool. All files stay in this browser.
+              ARCO is an offline-first design tool. All files stay in this browser.
               Open/save real <b>.fig</b> files, and export to PNG/SVG/PDF/CSS.
             </div>
           </div>
@@ -7595,7 +7595,7 @@ modes.addEventListener('click', async (e) => {
         <main class="db-main">
           <div class="db-hero">
             <div>
-              <h2>Welcome to Penfig</h2>
+              <h2>Welcome to ARCO</h2>
               <p>A Figma/Sketch-class design tool that runs anywhere — Vercel, local server, even double-clicked offline.</p>
             </div>
             <div class="db-hero-actions">
@@ -7727,23 +7727,23 @@ modes.addEventListener('click', async (e) => {
       try {
         const bytes = this.exportPfgBytes(doc);
         downloadBytes(bytes, doc.name + '.pfg', 'application/zip');
-        global.App.toast('Exported ' + doc.name + '.pfg (Penfig native format)', 4000, 'success');
+        global.App.toast('Exported ' + doc.name + '.pfg (ARCO native format)', 4000, 'success');
       } catch (err) {
         console.error(err);
         global.App.toast('.pfg export failed: ' + err.message, 8000, 'error');
       }
     },
-    /* PFG = Penfig native format. Deterministic ZIP:
+    /* PFG = ARCO native format. Deterministic ZIP:
        manifest.json (version, createdAt), document.json, pages/*.json, thumbnails/thumb.png */
     exportPfgBytes(doc) {
       // Minimal ZIP store (no compression) so we don't need JSZip
       const files = [];
       const manifest = {
-        format: 'penfig',
+        format: 'arco',
         version: 1,
         createdAt: new Date().toISOString(),
         name: doc.name,
-        app: 'penfig/1.0',
+        app: 'arco/1.0',
       };
       files.push({ name: 'manifest.json', data: str2u8(JSON.stringify(manifest, null, 2)) });
       const cleanDoc = JSON.parse(JSON.stringify(doc));
@@ -7764,7 +7764,7 @@ modes.addEventListener('click', async (e) => {
       const manifestName = Object.keys(entries).find(n => n.toLowerCase() === 'manifest.json');
       if (!manifestName) throw new Error('Not a .pfg file (missing manifest.json)');
       const manifest = JSON.parse(u8ToStr(entries[manifestName]));
-      if (manifest.format !== 'penfig') throw new Error('Not a Penfig file');
+      if (manifest.format !== 'arco') throw new Error('Not a ARCO file');
       const docName = Object.keys(entries).find(n => n.toLowerCase() === 'document.json');
       if (!docName) throw new Error('.pfg is missing document.json');
       const doc = JSON.parse(u8ToStr(entries[docName]));
@@ -8016,7 +8016,7 @@ modes.addEventListener('click', async (e) => {
 
 
 /* ---- src/ui-editor.js ---- */
-/* ui-editor.js — Penfig editor: canvas interactions, tools, zoom, text editing */
+/* ui-editor.js — ARCO editor: canvas interactions, tools, zoom, text editing */
 (function (global) {
   'use strict';
   const M = global.Model;
@@ -8197,7 +8197,7 @@ modes.addEventListener('click', async (e) => {
       global.Dash.saveDoc(this.doc);
     },
     exportBackupFig() {
-      this.exportFigAsync(this.doc, this.doc.name || 'penfig').then(
+      this.exportFigAsync(this.doc, this.doc.name || 'arco').then(
         () => this.toast('Backup exported', 2500, 'success'),
         (err) => this.toast('Backup failed: ' + err.message, 6000, 'error')
       );
@@ -8211,7 +8211,7 @@ modes.addEventListener('click', async (e) => {
       ed.innerHTML = `
       <div class="ed-top">
         <button id="ed-back" class="ed-iconbtn" title="Back to files">${Ico('back',{size:16})}</button>
-        <div class="ed-brand" title="Penfig Studio — local-first design workspace"><span class="ed-brand-mark">P</span><span>Penfig</span></div>
+        <div class="ed-brand" title="ARCO — local-first design workspace"><span class="ed-brand-mark">P</span><span>ARCO</span></div>
         <div class="ed-filename-wrap">
           <input id="ed-filename" class="ed-filename" value="${docName}" spellcheck="false">
           <span class="ed-pagename" id="ed-pagename" title="Double-click to rename page"></span>
@@ -8350,7 +8350,7 @@ modes.addEventListener('click', async (e) => {
       });
     },
     showWelcome(force) {
-      const key = 'penfig.welcome.v3';
+      const key = 'arco.welcome.v3';
       if (!force && localStorage.getItem(key)) return;
       document.querySelector('.studio-welcome')?.remove();
       const wrap = document.createElement('div');
@@ -8358,7 +8358,7 @@ modes.addEventListener('click', async (e) => {
       wrap.innerHTML = `<div class="studio-welcome-card">
         <button class="studio-welcome-x" aria-label="Close">×</button>
         <span class="studio-kicker">LOCAL-FIRST DESIGN</span>
-        <h2>Welcome to Penfig Studio</h2>
+        <h2>Welcome to ARCO</h2>
         <p>Your files stay on this device. Draw, prototype, inspect and export without an account.</p>
         <div class="studio-start-grid">
           <button data-tool="move"><kbd>V</kbd><span><b>Select</b><small>Pick and transform layers</small></span></button>
@@ -8719,7 +8719,7 @@ modes.addEventListener('click', async (e) => {
         const mb = Math.round(size/MB);
         const ok = await Dialogs.confirm(
           'This .fig file is ' + mb + ' MB. Importing it may use significant memory and take a while.\n\n' +
-          'Penfig will import it in the background with a progress bar. Continue?',
+          'ARCO will import it in the background with a progress bar. Continue?',
           { okLabel: 'Import' }
         );
         if (!ok) return;
@@ -8845,13 +8845,13 @@ modes.addEventListener('click', async (e) => {
     },
     _exportFigSync(doc, name, opts) {
       const bytes = global.FigConv.exportFig(doc, opts || {});
-      this._downloadBytes(bytes, (name || doc.name || 'penfig') + '.fig', 'application/x-figma');
+      this._downloadBytes(bytes, (name || doc.name || 'arco') + '.fig', 'application/x-figma');
       return Promise.resolve();
     },
     _startExportWorker(doc, name, opts) {
       return new Promise((resolve, reject) => {
         const jobId = ++this._exportJobId;
-        const fname = (name || doc.name || 'penfig') + '.fig';
+        const fname = (name || doc.name || 'arco') + '.fig';
         this._showExportProgress(fname, 2, 'Starting export worker…');
         let worker;
         try { worker = new Worker('src/export-worker.js', { type:'classic' }); }
@@ -10161,7 +10161,7 @@ modes.addEventListener('click', async (e) => {
           e.target.closest('.ed-zoom') || e.target.closest('.pf-menu') ||
           e.target.closest('.pf-palette') || e.target.closest('.pf-font-picker') ||
           e.target.closest('.ed-modal-backdrop') || e.target.closest('.modal-back') ||
-          e.target.closest('.pf-modal') || e.target.closest('#penfig-toast') ||
+          e.target.closest('.pf-modal') || e.target.closest('#arco-toast') ||
           e.target.closest('.pin.open') || e.target.closest('.peer-cursor'))) return;
         commit(true);
       };
@@ -11383,10 +11383,10 @@ modes.addEventListener('click', async (e) => {
 
     // ------------------------------------------------------------- toast
     toast(msg, ms, actionsOrKind) {
-      let el = document.getElementById('penfig-toast');
+      let el = document.getElementById('arco-toast');
       if (!el) {
         el = document.createElement('div');
-        el.id = 'penfig-toast';
+        el.id = 'arco-toast';
         document.body.appendChild(el);
       }
       el.className = '';
@@ -11442,7 +11442,7 @@ modes.addEventListener('click', async (e) => {
 
 
 /* ---- src/ui-panels.js ---- */
-/* ui-panels.js — Penfig panels: layers, pages, inspector, tokens, menus */
+/* ui-panels.js — ARCO panels: layers, pages, inspector, tokens, menus */
 (function (global) {
   'use strict';
   const M = global.Model;
@@ -12258,11 +12258,11 @@ modes.addEventListener('click', async (e) => {
       wrap.innerHTML = `
         <div class="pf-modal-card">
           <div class="pf-modal-head"><b>Plugins</b><button class="ed-iconbtn pf-modal-x">${Ico('close',{size:10})}</button></div>
-          <div class="pl-trust"><b>${Ico('play',{size:11})} Run</b> headless plugins execute in a sandboxed Web Worker (async <code>penfig</code> API, whitelisted RPC only) — where Workers are unavailable they fall back to trusted local code, as labeled in the output. <b>${Ico('plugin',{size:12})} Open</b> UI plugins run sandboxed (iframe, scripts-only) and may only call the same whitelisted RPC surface.</div>
+          <div class="pl-trust"><b>${Ico('play',{size:11})} Run</b> headless plugins execute in a sandboxed Web Worker (async <code>arco</code> API, whitelisted RPC only) — where Workers are unavailable they fall back to trusted local code, as labeled in the output. <b>${Ico('plugin',{size:12})} Open</b> UI plugins run sandboxed (iframe, scripts-only) and may only call the same whitelisted RPC surface.</div>
           <div class="pl-list"></div>
           <div class="pf-title" style="margin-top:10px">New custom plugin</div>
-          <div class="pl-new"><input type="text" id="pl-name" placeholder="Name"><textarea id="pl-code" rows="6" placeholder='Headless code (optional).\ne.g. penfig.toast("hi"); penfig.refresh(); return "done";'></textarea>
-          <textarea id="pl-ui" rows="6" placeholder='UI code (optional) — runs in a sandboxed panel; use await penfig.call("doc")...\ne.g. const doc = await penfig.call("doc"); document.body.textContent = doc.name;'></textarea>
+          <div class="pl-new"><input type="text" id="pl-name" placeholder="Name"><textarea id="pl-code" rows="6" placeholder='Headless code (optional).\ne.g. arco.toast("hi"); arco.refresh(); return "done";'></textarea>
+          <textarea id="pl-ui" rows="6" placeholder='UI code (optional) — runs in a sandboxed panel; use await arco.call("doc")...\ne.g. const doc = await arco.call("doc"); document.body.textContent = doc.name;'></textarea>
           <div class="pl-acts"><button data-pl="save">+ Add to list</button></div></div>
           <pre class="pl-out" style="display:none"></pre>
         </div>`;
@@ -13191,7 +13191,7 @@ modes.addEventListener('click', async (e) => {
         <hr>
         <div class="pf-title">File formats</div>
         <button data-x="fig">${Ico('fig',{size:13})} Figma file (.fig)</button>
-        <button data-x="pfg">${Ico('pfg',{size:13})} Penfig file (.pfg)</button>
+        <button data-x="pfg">${Ico('pfg',{size:13})} ARCO file (.pfg)</button>
         <hr>
         <div class="pf-title">Design tokens</div>
         <button data-x="tok-json">${Ico('code',{size:12})} JSON (W3C DTCG)</button>
@@ -13522,7 +13522,7 @@ modes.addEventListener('click', async (e) => {
     try {
       const bytes = global.Dash.exportPfgBytes(doc);
       global.Dash.downloadBytes(bytes, doc.name + '.pfg', 'application/zip');
-      App.toast('Exported ' + doc.name + '.pfg (Penfig native)', 4000, 'success');
+      App.toast('Exported ' + doc.name + '.pfg (ARCO native)', 4000, 'success');
     } catch (err) {
       console.error(err);
       App.toast('.pfg export failed: ' + err.message, 6000, 'error');
@@ -13534,7 +13534,7 @@ modes.addEventListener('click', async (e) => {
 
 
 /* ---- src/enhancements.js ---- */
-/* enhancements.js — Penfig Engine v2 P0/P1/P2 enhancements.
+/* enhancements.js — ARCO Engine v2 P0/P1/P2 enhancements.
  * Adds: drag-and-drop layers reorder/reparent, deep select (⌘-click),
  * custom tool cursors, canvas mini-map, zoom-to-selection, keyboard
  * selection history (Tab/⇧Tab), autosave crash-recovery journal,
@@ -13569,7 +13569,7 @@ modes.addEventListener('click', async (e) => {
     // =========================================================
     // 1. Crash-recovery journal (P0 §1/§44)
     // =========================================================
-    const RECOVERY_KEY = 'penfig.crash.v1';
+    const RECOVERY_KEY = 'arco.crash.v1';
     const RECOVERY_INTERVAL_MS = 15000;
     let _recoveryTimer = null;
     function journalTick(){
@@ -13607,7 +13607,7 @@ modes.addEventListener('click', async (e) => {
       if (!snap || !snap.doc) return;
       const ageMin = Math.round((Date.now() - snap.at)/60000);
       const ok = await Dialogs.confirm(
-        `Penfig recovered an unsaved document from ${ageMin} minute(s) ago: "${snap.name}". Restore it?\n\n(Cancel discards the recovery snapshot.)`,
+        `ARCO recovered an unsaved document from ${ageMin} minute(s) ago: "${snap.name}". Restore it?\n\n(Cancel discards the recovery snapshot.)`,
         { okLabel: 'Restore' }
       );
       if (!ok){
@@ -14374,7 +14374,7 @@ modes.addEventListener('click', async (e) => {
 
 
 /* ---- src/p0-fixes.js ---- */
-/* p0-fixes.js — Penfig Engine v2 P0 CLOSEOUT.
+/* p0-fixes.js — ARCO Engine v2 P0 CLOSEOUT.
  * Honest status: implements every remaining P0 item called out in the
  * master spec §1, §3, §5–§8, §14, §16, §17, §33–§35, §44.
  *
@@ -14392,7 +14392,7 @@ modes.addEventListener('click', async (e) => {
  *  12. Viewport culling (1K/10K/50K/100K performance)
  *  13. Auto-layout edge cases: min/max, aspect ratio, counter-axis gap,
  *      nested hug/fill fixed-point, stroke/effect bounds in measurement
- *  14. .penfig v2 (DEFLATE-free but with SHA-style checksums, assets dedup,
+ *  14. .arco v2 (DEFLATE-free but with SHA-style checksums, assets dedup,
  *      document.json + assets/ + fonts/ + metadata.json, migrations,
  *      recovery journal file)
  *  15. Text → vector outline
@@ -14659,7 +14659,7 @@ modes.addEventListener('click', async (e) => {
       while((m=re.exec(d))){
         if (m[1]){ cmd=m[1]; if (cmd==='M'||cmd==='m'){ if(sp.length) subpaths.push(sp); } if (cmd==='z'||cmd==='Z'){ if(sp.length) subpaths.push(sp); } continue; }
         const v=parseFloat(m[0]);
-        // consume the right number of coords per command; simplified for M/L/C/Q used by Penfig
+        // consume the right number of coords per command; simplified for M/L/C/Q used by ARCO
         if (cmd==='M'||cmd==='L'){ x=v; y=parseFloat(re.exec('')[0]||'0'); sp.push({x,y,type:'L'}); cmd=(cmd==='M')?'L':'L'; sx=x;sy=y;}
         else if (cmd==='m'||cmd==='l'){ x+=v; y+=parseFloat(re.exec('')[0]||'0'); sp.push({x,y,type:'L'}); cmd=(cmd==='m')?'l':'l'; sx=x;sy=y;}
         else if (cmd==='C'||cmd==='c'){
@@ -14779,10 +14779,10 @@ modes.addEventListener('click', async (e) => {
     const _copySel = App.copySel.bind(App);
     App.copySel = function(cut){
       _copySel(cut);
-      // Also write JSON to the system clipboard as text/penfig+json
+      // Also write JSON to the system clipboard as text/arco+json
       try{
         if (!this.sel.length || !this.clipboard) return;
-        const payload = { __penfig:'clone-v1', nodes: this.clipboard.nodes, pageOrigin: this.pageIndex };
+        const payload = { __arco:'clone-v1', nodes: this.clipboard.nodes, pageOrigin: this.pageIndex };
         if (navigator.clipboard && navigator.clipboard.writeText){
           navigator.clipboard.writeText(JSON.stringify(payload)).catch(()=>{});
         }
@@ -14794,12 +14794,12 @@ modes.addEventListener('click', async (e) => {
       if (this.clipboard && this.clipboard.nodes && this.clipboard.nodes.length){
         _paste(); return;
       }
-      // Fall back to reading system clipboard for Penfig JSON
+      // Fall back to reading system clipboard for ARCO JSON
       if (navigator.clipboard && navigator.clipboard.readText){
         navigator.clipboard.readText().then(txt=>{
           try{
             const data = JSON.parse(txt);
-            if (data && data.__penfig==='clone-v1' && Array.isArray(data.nodes)){
+            if (data && data.__arco==='clone-v1' && Array.isArray(data.nodes)){
               this.clipboard = { nodes: data.nodes };
               _paste();
             }
@@ -15202,7 +15202,7 @@ modes.addEventListener('click', async (e) => {
     // external cull list for the top-level loop).
 
     // ===============================================================
-    // 19. .penfig v2 format (P0 §3) — ZIP-style with document.json/
+    // 19. .arco v2 format (P0 §3) — ZIP-style with document.json/
     //     assets/fonts/metadata.json, CRC32, SHA-style integrity, asset dedup,
     //     migrations.
     // ===============================================================
@@ -15244,11 +15244,11 @@ modes.addEventListener('click', async (e) => {
         for(const p of clone.pages) for(const n of Object.values(p.nodes)) walk(n);
         const docBytes = new TextEncoder().encode(JSON.stringify(clone, null, 2));
         const meta = {
-          format: 'penfig',
+          format: 'arco',
           version: 2,
-          kind: 'Penfig native format (lossless)',
+          kind: 'ARCO native format (lossless)',
           created: new Date().toISOString(),
-          app: 'penfig',
+          app: 'arco',
           appVersion: '2.0.0',
           assets: assets.length,
         };
@@ -15256,15 +15256,15 @@ modes.addEventListener('click', async (e) => {
         // Build ZIP using existing Dash.zipAppend if available; fall back to
         // the simple STORE-only writer in Dash module by passing virtual files.
         // We extend the writer below.
-        return writePenfigV2({ 'document.json': docBytes, 'metadata.json': metaBytes, 'assets/': new Uint8Array(0) }, assets);
+        return writeARCOV2({ 'document.json': docBytes, 'metadata.json': metaBytes, 'assets/': new Uint8Array(0) }, assets);
       };
       const _imp = Dash.importPfg;
       Dash.importPfg = function(bytes){
         // Read back: parse ZIP, resolve assets/ back into data URLs.
-        const entries = readPenfigV2(bytes);
+        const entries = readARCOV2(bytes);
         const meta = entries['metadata.json'] ? JSON.parse(new TextDecoder().decode(entries['metadata.json'])) : {version:1};
         const docBytes = entries['document.json'];
-        if (!docBytes) throw new Error('.penfig missing document.json');
+        if (!docBytes) throw new Error('.arco missing document.json');
         const doc = JSON.parse(new TextDecoder().decode(docBytes));
         // resolve asset refs → data URLs
         const assetMap = {};
@@ -15294,7 +15294,7 @@ modes.addEventListener('click', async (e) => {
 
     // Minimal STORE-only ZIP reader/writer for v2 (no external deps).
     // Uses CRC32, local file headers, central directory.
-    function writePenfigV2(files, assetFiles){
+    function writeARCOV2(files, assetFiles){
       const all = [];
       for(const [name, bytes] of Object.entries(files)){
         all.push({name, bytes: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)});
@@ -15361,7 +15361,7 @@ modes.addEventListener('click', async (e) => {
       out.set(end,p);
       return out;
     }
-    function readPenfigV2(bytes){
+    function readARCOV2(bytes){
       const entries = {};
       const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       let off=0;
@@ -15384,12 +15384,12 @@ modes.addEventListener('click', async (e) => {
       return entries;
     }
     // Expose extension readers/writers
-    global.PenfigIO = { writePenfigV2, readPenfigV2 };
+    global.ARCOIO = { writeARCOV2, readARCOV2 };
 
-    // Also allow export as `.penfig`
+    // Also allow export as `.arco`
     if (Dash){
-      Dash.exportPenfigBytes = Dash.exportPfgBytes; // alias
-      Dash.importPenfig = Dash.importPfg;
+      Dash.exportARCOBytes = Dash.exportPfgBytes; // alias
+      Dash.importARCO = Dash.importPfg;
     }
 
     // ===============================================================
@@ -15416,7 +15416,7 @@ modes.addEventListener('click', async (e) => {
             children:n.children.slice(),
           });
         });
-        return { version:'penfig-ir-v1', nodes };
+        return { version:'arco-ir-v1', nodes };
       }
     };
 
@@ -16162,7 +16162,7 @@ modes.addEventListener('click', async (e) => {
           e.target.closest('.ed-zoom') || e.target.closest('.pf-menu') ||
           e.target.closest('.pf-palette') || e.target.closest('.pf-font-picker') ||
           e.target.closest('.ed-modal-backdrop') || e.target.closest('.modal-back') ||
-          e.target.closest('.pf-modal') || e.target.closest('#penfig-toast')
+          e.target.closest('.pf-modal') || e.target.closest('#arco-toast')
         )) return;
         commit(true);
       };
@@ -16512,7 +16512,7 @@ modes.addEventListener('click', async (e) => {
       try { App._stopRecoveryJournal && App._stopRecoveryJournal(); } catch (e) {}
     }
     (function slimJournal() {
-      const KEY = 'penfig.crash.meta.v2';
+      const KEY = 'arco.crash.meta.v2';
       let timer = 0;
       function tick() {
         if (!App.doc) return;
@@ -19401,7 +19401,7 @@ modes.addEventListener('click', async (e) => {
         return n ? { x: n.x, y: n.y, w: n.w, h: n.h, parent: n.parent } : null;
       });
       try {
-        const payload = { __penfig: 'clone-v1', trees: serializeTrees(this.clipboard.trees) };
+        const payload = { __arco: 'clone-v1', trees: serializeTrees(this.clipboard.trees) };
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(JSON.stringify(payload)).catch(() => {});
         }
@@ -19432,7 +19432,7 @@ modes.addEventListener('click', async (e) => {
       navigator.clipboard.readText().then((txt) => {
         try {
           const data = JSON.parse(txt);
-          if (data && data.__penfig === 'clone-v1' && Array.isArray(data.trees)) {
+          if (data && data.__arco === 'clone-v1' && Array.isArray(data.trees)) {
             app.clipboard = { trees: data.trees, origin: data.origin || [] };
           }
         } catch (e) {}
@@ -19593,9 +19593,9 @@ modes.addEventListener('click', async (e) => {
         if (navigator.clipboard && window.ClipboardItem) {
           navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(
             () => this.toast('Copied PNG @2×'),
-            () => downloadBlob(blob, (this.doc.name || 'penfig') + '.png')
+            () => downloadBlob(blob, (this.doc.name || 'arco') + '.png')
           );
-        } else downloadBlob(blob, (this.doc.name || 'penfig') + '.png');
+        } else downloadBlob(blob, (this.doc.name || 'arco') + '.png');
       }, 'image/png');
     };
 
@@ -20868,7 +20868,7 @@ modes.addEventListener('click', async (e) => {
     return saveBlob(blob, filename);
   }
 
-  global.PenfigSave = { saveBlob, downloadBytes, showSaveSheet };
+  global.ARCOSave = { saveBlob, downloadBytes, showSaveSheet };
 
   ready(function () {
     const App = global.App;
@@ -21039,7 +21039,7 @@ modes.addEventListener('click', async (e) => {
         '<button type="button" data-x="page-pdf">' + Ico('pdf', { size: 13 }) + ' PDF</button>' +
         '<hr><div class="pf-title">File formats</div>' +
         '<button type="button" data-x="fig">' + Ico('fig', { size: 13 }) + ' Figma file (.fig)</button>' +
-        '<button type="button" data-x="pfg">' + Ico('pfg', { size: 13 }) + ' Penfig file (.pfg)</button>' +
+        '<button type="button" data-x="pfg">' + Ico('pfg', { size: 13 }) + ' ARCO file (.pfg)</button>' +
         '<hr><div class="pf-title">Design tokens</div>' +
         '<button type="button" data-x="tok-json">' + Ico('code', { size: 12 }) + ' JSON (W3C DTCG)</button>' +
         '<button type="button" data-x="tok-css">' + Ico('css', { size: 12 }) + ' CSS variables</button>';
@@ -21488,7 +21488,7 @@ modes.addEventListener('click', async (e) => {
   }
 
   function saveBlob(blob, name) {
-    if (global.PenfigSave && global.PenfigSave.saveBlob) return global.PenfigSave.saveBlob(blob, name);
+    if (global.ARCOSave && global.ARCOSave.saveBlob) return global.ARCOSave.saveBlob(blob, name);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = name;
@@ -24326,7 +24326,7 @@ modes.addEventListener('click', async (e) => {
               });
               const suffix = setting.suffix || '';
               const name = String(n.name || 'export').replace(/[\\/:*?"<>|]+/g, '-') + suffix + '.jpg';
-              if (global.PenfigSave && global.PenfigSave.saveBlob) await global.PenfigSave.saveBlob(blob, name);
+              if (global.ARCOSave && global.ARCOSave.saveBlob) await global.ARCOSave.saveBlob(blob, name);
               else {
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob); a.download = name; a.click();
@@ -26203,7 +26203,7 @@ modes.addEventListener('click', async (e) => {
       if (size >= WARN_BYTES && global.Dialogs) {
         const mb = Math.round(size / (1024 * 1024));
         const ok = await Dialogs.confirm(
-          'This .fig is ' + mb + ' MB.\n\nPenfig will keep the file in a background worker, open the first page only, and load images as they appear on screen. Undo and auto-save stay off so the tab does not freeze.\n\nA page with tens of thousands of vectors can still hitch — file size is not the same as layer count.',
+          'This .fig is ' + mb + ' MB.\n\nARCO will keep the file in a background worker, open the first page only, and load images as they appear on screen. Undo and auto-save stay off so the tab does not freeze.\n\nA page with tens of thousands of vectors can still hitch — file size is not the same as layer count.',
           { okLabel: 'Import', title: 'Large file' }
         );
         if (!ok) return;

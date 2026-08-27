@@ -1,10 +1,10 @@
-# Penfig Studio — Product and Engineering Audit
+# ARCO — Product and Engineering Audit
 
 Date: 2026-08-26
 
 ## Executive assessment
 
-Penfig is a credible local-first editor prototype with an unusually broad feature surface. It is not yet at production parity with Figma, Sketch, or Framer. The strongest areas are offline operation, the document model, transforms, vector tools, auto layout, tokens, and practical `.fig` interoperability. The largest risks are maintainability, limited automated coverage, incomplete professional fidelity, and feature claims that sometimes describe prototypes as complete workflows.
+ARCO is a credible local-first editor prototype with an unusually broad feature surface. It is not yet at production parity with Figma, Sketch, or Framer. The strongest areas are offline operation, the document model, transforms, vector tools, auto layout, tokens, and practical `.fig` interoperability. The largest risks are maintainability, limited automated coverage, incomplete professional fidelity, and feature claims that sometimes describe prototypes as complete workflows.
 
 Overall readiness: **alpha / serious prototype**.
 
@@ -73,7 +73,7 @@ These four issues are addressed in the audited build.
 
 ## Changes made after the audit
 
-- Introduced a consistent Penfig Studio interface theme and clearer hierarchy.
+- Introduced a consistent ARCO interface theme and clearer hierarchy.
 - Added labeled primary panel tabs.
 - Added Quick Actions, Present, Dev and Focus Canvas controls.
 - Added a first-run onboarding and persistent Help entry.
@@ -94,4 +94,4 @@ These four issues are addressed in the audited build.
 
 ## Release criterion
 
-Do not market Penfig as “better than Figma” until representative professional files can be edited for a full workday without data loss, all P0 workflows have interaction tests, native files round-trip without loss, and large-document performance budgets pass on mid-range hardware.
+Do not market ARCO as “better than Figma” until representative professional files can be edited for a full workday without data loss, all P0 workflows have interaction tests, native files round-trip without loss, and large-document performance budgets pass on mid-range hardware.

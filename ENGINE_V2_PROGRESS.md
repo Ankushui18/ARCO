@@ -1,4 +1,4 @@
-# Penfig Engine v2 — Progress (2026-08-25)
+# ARCO Engine v2 — Progress (2026-08-25)
 
 ## Architecture foundation (P0 spec §0–§4)
 
@@ -42,7 +42,7 @@
 ## Architecture locked
 
 - **No business logic duplicated between web and desktop** (spec §0). Tauri 2 desktop shell will mount the same modules with added native FS/clipboard/font APIs injected at runtime.
-- **`.penfig` native format** (spec §3): reserved `{document.json, assets/, fonts/, metadata.json}` structure in v2 spec (codec pending).
+- **`.arco` native format** (spec §3): reserved `{document.json, assets/, fonts/, metadata.json}` structure in v2 spec (codec pending).
 - **`.fig` stays interop only** (spec §2/§3): `figconv.js` reads/writes the kiwi blobs via the bundled FigIO codec; never the native model.
 - **No AI until P0+P1+P2** (spec §52): engine, desktop, QA, collaboration all ship first.
 

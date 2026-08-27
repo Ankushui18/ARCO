@@ -1,7 +1,7 @@
 /* plugins.js — Figma-style plugin system (sandboxed plugins).
  *
  * Headless plugins run against a small, explicit, ASYNC API surface
- * (`penfig`). In a real browser the code executes in a dedicated Web
+ * (`arco`). In a real browser the code executes in a dedicated Web
  * Worker — a separate JS realm that cannot reach the host's window,
  * document, or localStorage. The worker talks to the app only through a
  * whitelisted postMessage RPC (see handleRpc); any call not on the list
@@ -30,17 +30,17 @@
         id: 'arrange', name: 'Arrange selection in a grid',
         desc: 'Lays selected nodes out in an equal grid with 24px gaps.',
         code: `
-const sel = (await penfig.selection()).ids;
+const sel = (await arco.selection()).ids;
 if (!sel.length) return 'Select at least one node first.';
-await penfig.history.begin();
+await arco.history.begin();
 const cols = Math.ceil(Math.sqrt(sel.length));
 const gap = 24, size = 120;
 for (let i = 0; i < sel.length; i++) {
   const row = Math.floor(i / cols), col = i % cols;
-  await penfig.setPos(sel[i], col * (size + gap), row * (size + gap));
+  await arco.setPos(sel[i], col * (size + gap), row * (size + gap));
 }
-await penfig.history.end();
-await penfig.refresh();
+await arco.history.end();
+await arco.refresh();
 return 'Arranged ' + sel.length + ' node(s) in ' + cols + '-column grid.';
 `,
       },
@@ -48,16 +48,16 @@ return 'Arranged ' + sel.length + ' node(s) in ' + cols + '-column grid.';
         id: 'rename', name: 'Number selection (01 · name)',
         desc: 'Prefixes selected layer names with zero-padded indexes.',
         code: `
-const sel = (await penfig.selection()).ids;
+const sel = (await arco.selection()).ids;
 if (!sel.length) return 'Nothing selected.';
-await penfig.history.begin();
+await arco.history.begin();
 let i = 0;
 for (const id of sel) {
-  const n = await penfig.getNode(id);
-  if (n && !/^\\d+ · /.test(n.name)) { i++; await penfig.setProps(id, { name: String(i).padStart(2, '0') + ' · ' + n.name }); }
+  const n = await arco.getNode(id);
+  if (n && !/^\\d+ · /.test(n.name)) { i++; await arco.setProps(id, { name: String(i).padStart(2, '0') + ' · ' + n.name }); }
 }
-await penfig.history.end();
-await penfig.refresh();
+await arco.history.end();
+await arco.refresh();
 return 'Renamed ' + sel.length + ' node(s).';
 `,
       },
@@ -65,14 +65,14 @@ return 'Renamed ' + sel.length + ' node(s).';
         id: 'mode', name: 'Cycle token mode',
         desc: 'Moves the design to the next variable mode (Light → Dark → …).',
         code: `
-const doc = await penfig.doc();
+const doc = await arco.doc();
 const modes = doc.modes;
 const i = modes.findIndex(m => m.id === doc.defaultMode);
-await penfig.history.begin();
+await arco.history.begin();
 const next = modes[(i + 1) % modes.length];
-await penfig.setMode(next.id);
-await penfig.history.end();
-await penfig.refresh();
+await arco.setMode(next.id);
+await arco.history.end();
+await arco.refresh();
 return 'Mode → ' + next.name;
 `,
       },
@@ -80,14 +80,14 @@ return 'Mode → ' + next.name;
         id: 'outline', name: 'Outline all text',
         desc: 'Gives every text node in the page a visible 1px stroke.',
         code: `
-const nodes = await penfig.listNodes();
-await penfig.history.begin();
+const nodes = await arco.listNodes();
+await arco.history.begin();
 let n = 0;
 for (const s of nodes) {
-  if (s.type === 'text') { await penfig.setProps(s.id, { stroke: { color: '#000000', width: 1, opacity: 0.3, align: 'outside', token: null, visible: true } }); n++; }
+  if (s.type === 'text') { await arco.setProps(s.id, { stroke: { color: '#000000', width: 1, opacity: 0.3, align: 'outside', token: null, visible: true } }); n++; }
 }
-await penfig.history.end();
-await penfig.refresh();
+await arco.history.end();
+await arco.refresh();
 return 'Outlined ' + n + ' text node(s).';
 `,
       },
@@ -96,7 +96,7 @@ return 'Outlined ' + n + ' text node(s).';
         desc: 'A plugin with a live UI panel — lists token modes, switches on click, toasts the result.',
         code: '',
         ui: `
-const doc = await penfig.call('doc');
+const doc = await arco.call('doc');
 const box = document.createElement('div');
 box.style.cssText = 'font:13px/1.6 system-ui,sans-serif';
 box.innerHTML =
@@ -114,17 +114,17 @@ paint(doc);
 modes.addEventListener('click', async (e) => {
   const b = e.target.closest('button[data-m]');
   if (!b) return;
-  await penfig.call('setMode', b.getAttribute('data-m'));
-  paint(await penfig.call('doc'));
-  penfig.toast('Mode switched');
+  await arco.call('setMode', b.getAttribute('data-m'));
+  paint(await arco.call('doc'));
+  arco.toast('Mode switched');
 });
 `,
       },
     ],
 
     custom: {
-      all() { try { return JSON.parse(localStorage.getItem('penfig.plugins.v1')) || []; } catch (e) { return []; } },
-      save(list) { try { localStorage.setItem('penfig.plugins.v1', JSON.stringify(list)); } catch (e) { } },
+      all() { try { return JSON.parse(localStorage.getItem('arco.plugins.v1')) || []; } catch (e) { return []; } },
+      save(list) { try { localStorage.setItem('arco.plugins.v1', JSON.stringify(list)); } catch (e) { } },
       add(p) { const l = this.all(); p.id = M.uid('pl-'); l.push(p); this.save(l); return p; },
       remove(id) { this.save(this.all().filter(p => p.id !== id)); },
     },
@@ -194,10 +194,10 @@ modes.addEventListener('click', async (e) => {
       }
     },
 
-    // build a penfig proxy over a call(name, ...args) function —
+    // build a arco proxy over a call(name, ...args) function —
     // identical shape in worker mode (calls become Promises) and local
     // mode (calls resolve synchronously), so plugin code can just `await`.
-    _penfigProxy(call) {
+    _arcoProxy(call) {
       return {
         doc: () => call('doc'),
         setMode: (id) => call('setMode', id),
@@ -255,7 +255,7 @@ modes.addEventListener('click', async (e) => {
 
     // --------------------------------------------------------------- worker
     // Hard sandbox: the plugin code runs in a Web Worker (separate realm).
-    // It only gets the penfig RPC proxy + a console stub; no host window,
+    // It only gets the arco RPC proxy + a console stub; no host window,
     // document, or localStorage. All state changes come back over the
     // whitelisted postMessage RPC. 15s timeout, then the worker is killed.
     _runWorker(code, App) {
@@ -301,7 +301,7 @@ modes.addEventListener('click', async (e) => {
       });
     },
 
-    // script that runs INSIDE the worker: penfig proxy → postMessage RPC.
+    // script that runs INSIDE the worker: arco proxy → postMessage RPC.
     _workerBootstrap() {
       return `
 (function () {
@@ -327,7 +327,7 @@ modes.addEventListener('click', async (e) => {
       postMessage({ t: 'call', seq: s, name: name, args: args });
     });
   }
-  var penfig = {
+  var arco = {
     doc: function () { return call('doc'); },
     setMode: function (id) { return call('setMode', id); },
     selection: function () { return call('selection'); },
@@ -357,8 +357,8 @@ modes.addEventListener('click', async (e) => {
     }
     if (m.t !== 'run') return;
     try {
-      var fn = new Function('penfig', 'console', '"use strict";\\nreturn (async () => {\\n' + m.code + '\\n})();');
-      var p = fn(penfig, consoleStub);
+      var fn = new Function('arco', 'console', '"use strict";\\nreturn (async () => {\\n' + m.code + '\\n})();');
+      var p = fn(arco, consoleStub);
       Promise.resolve(p).then(
         function (r) { postMessage({ t: 'result', result: r == null ? null : String(r) }); },
         function (err) { postMessage({ t: 'error', error: String(err && err.message || err) }); });
@@ -372,7 +372,7 @@ modes.addEventListener('click', async (e) => {
 
     // ------------------------------------------------------------- plugin UI
     // bridge script injected into the UI iframe before the plugin code.
-    // UI code calls penfig.call(name, ...args) → parent postMessage →
+    // UI code calls arco.call(name, ...args) → parent postMessage →
     // handleRpc (same whitelist as headless plugins).
     _uiBridge() {
       return `
@@ -388,7 +388,7 @@ modes.addEventListener('click', async (e) => {
     pending.splice(pending.indexOf(entry), 1);
     if (m.error) entry.cb(new Error(m.error)); else entry.cb(m.result);
   });
-  window.penfig = {
+  window.arco = {
     call: function (name) {
       var args = Array.prototype.slice.call(arguments, 1);
       var s = ++seq;
@@ -397,8 +397,8 @@ modes.addEventListener('click', async (e) => {
         parent.postMessage({ t: 'pf-rpc', seq: s, name: name, args: args }, '*');
       });
     },
-    history: { begin: function () { return window.penfig.call('historyBegin'); }, end: function () { return window.penfig.call('historyEnd'); } },
-    toast: function (m) { return window.penfig.call('toast', m); }
+    history: { begin: function () { return window.arco.call('historyBegin'); }, end: function () { return window.arco.call('historyEnd'); } },
+    toast: function (m) { return window.arco.call('toast', m); }
   };
 })();
 </script>`;

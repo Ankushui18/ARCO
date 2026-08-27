@@ -54,7 +54,7 @@ function exportFigJob(id, doc, name, opts) {
     const ab = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
 
     progress(id, 'done', 100, 'Done');
-    send({ kind:'done', id, bytes:ab, name: name || (doc.name || 'Penfig') + '.fig', format:'fig' }, [ab]);
+    send({ kind:'done', id, bytes:ab, name: name || (doc.name || 'ARCO') + '.fig', format:'fig' }, [ab]);
   } catch (err) {
     if (err.message === 'Cancelled') { send({ kind:'cancelled', id }); return; }
     send({ kind:'error', id, message: err.message || String(err), stack: err.stack });

@@ -4,7 +4,7 @@
  * Shortcuts.dispatch for a binding), (b) the shortcuts modal (rendered from
  * the same table), and (c) conflict detection (Shortcuts.conflicts() —
  * tested headlessly). Figma-standard keys, per the spec's compatibility rule:
- * Figma interaction model + Figma shortcuts, Penfig identity.
+ * Figma interaction model + Figma shortcuts, ARCO identity.
  *
  * Entry shape: { keys, label, group, run }
  *   keys — 'v', 'mod+c', 'shift+2', 'shift+k', 'delete', 'space' …

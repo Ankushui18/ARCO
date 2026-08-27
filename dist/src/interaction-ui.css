@@ -128,9 +128,9 @@
 .arco-sc .sc-grid span:nth-child(even) { font-size: 11px; color: #b3b3b3; }
 
 /* toast states */
-#penfig-toast {
+#arco-toast {
   background: #2c2c2c; border: 1px solid rgba(255,255,255,.1);
   border-radius: 8px; font-size: 12px;
 }
-#penfig-toast.error { background: #3b1510; border-color: #5d251c; }
-#penfig-toast.success { background: #12301c; border-color: #1c4c2c; }
+#arco-toast.error { background: #3b1510; border-color: #5d251c; }
+#arco-toast.success { background: #12301c; border-color: #1c4c2c; }

@@ -262,7 +262,7 @@
   };
 
   // ============================================================ shared libraries
-  // Figma's team libraries are a cloud feature; Penfig's equivalent links
+  // Figma's team libraries are a cloud feature; ARCO's equivalent links
   // OTHER LOCAL FILES as libraries (the Assets tab manages the links).
   // Library instances remember libraryFileId; updates re-clone from the
   // source file, which is read live from the local store, so editing the

@@ -1,4 +1,4 @@
-/* sw.js — Penfig service worker
+/* sw.js — ARCO service worker
  *
  * Strategy:
  *   - Disabled entirely on localhost / 127.0.0.1 / .local / vercel.app previews
@@ -10,7 +10,7 @@
  *   - Bumped cache name = old caches deleted on activate.
  */
 
-const CACHE = 'penfig-app-v20';
+const CACHE = 'arco-app-v20';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -29,9 +29,9 @@ const isDevHost = (() => {
     host === '127.0.0.1' ||
     host === '0.0.0.0' ||
     host.endsWith('.local') ||
-    // Vercel preview deployments: <branch>-<slug>.vercel.app vs penfig.app (prod)
-    // Heuristic: anything with a hyphen+hex segment or "penfig-git-" = preview.
-    /penfig-git-/i.test(host) ||
+    // Vercel preview deployments: <branch>-<slug>.vercel.app vs arco.app (prod)
+    // Heuristic: anything with a hyphen+hex segment or "arco-git-" = preview.
+    /arco-git-/i.test(host) ||
     // Vercel gives preview URLs a hostname like project-*.vercel.app
     /-.*-.*\.vercel\.app$/i.test(host)
   );

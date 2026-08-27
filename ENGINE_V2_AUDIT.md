@@ -1,11 +1,11 @@
-# Penfig Design Engine v2 — Module-by-Module Audit & Roadmap
+# ARCO Design Engine v2 — Module-by-Module Audit & Roadmap
 
 _Generated 2026-08-25 after full codebase sweep, static analysis, runtime
 smoke tests (13 engine tests, 0 failures) and UI rendering verification._
 
-This document is the source of truth for **what Penfig can do today, what must
+This document is the source of truth for **what ARCO can do today, what must
 be rewritten, what should be improved, and what new architecture we need** to
-make Penfig a legitimate Figma competitor that a designer can use for an
+make ARCO a legitimate Figma competitor that a designer can use for an
 8–10 hour day without reaching for Figma.
 
 **Standing rules** (from ROADMAP.md §0/§2/§3/§43/§48 — unchanged):
@@ -16,7 +16,7 @@ make Penfig a legitimate Figma competitor that a designer can use for an
 3. §3  `.fig` never becomes the native model.
 4. §43 Plugin sandbox honesty: Web Worker with whitelisted RPC = sandboxed;
        `new Function` fallback = local trusted mode, labeled as such.
-5. §48 Figma interaction model + terminology + shortcuts, Penfig visual
+5. §48 Figma interaction model + terminology + shortcuts, ARCO visual
        identity (not a pixel clone).
 6. §50 Do NOT build: FigJam / slides / sites clones, AI generation, plugin
        marketplace, cloud SaaS, template marketplace, enterprise billing.
@@ -189,7 +189,7 @@ npm dependency, zero-runtime-dep promise intact).
 ### P0 gaps
 | Gap | Action |
 |-----|--------|
-| No **system clipboard interop** (can't copy a node from one Penfig tab/window to another via real clipboard). | Serialize clipboard to `application/vnd.penfig+json` + SVG fallback + PNG fallback on the system clipboard on copy; read it on paste. |
+| No **system clipboard interop** (can't copy a node from one ARCO tab/window to another via real clipboard). | Serialize clipboard to `application/vnd.arco+json` + SVG fallback + PNG fallback on the system clipboard on copy; read it on paste. |
 | No **paste in place** (⌘⇧V pastes at original canvas position, not +20,20). | Add shortcut. |
 | Paste doesn't respect the current parent (e.g. pasting into a selected frame). | Detect selected frame parent and attach under it when possible. |
 | Paste style (⌘⌥C/V) exists but only copies basic fills/stroke/radius/opacity/shadows/blur — not text, auto layout, effects. | Expand `propClip` to cover all inspectable properties. |
@@ -273,7 +273,7 @@ npm dependency, zero-runtime-dep promise intact).
 
 ---
 
-# Phase 2 — Layout Engine (must be one of Penfig's strongest areas)
+# Phase 2 — Layout Engine (must be one of ARCO's strongest areas)
 
 ## Auto Layout (`layout.js`)
 
@@ -368,11 +368,11 @@ npm dependency, zero-runtime-dep promise intact).
 | **No custom font loading / @font-face.** Text always falls back to Inter/system. | P1 | Add Font Manager: drop font files (.ttf/.otf/.woff2), register via `@font-face` in an injected stylesheet, persist in `.pfg` under `fonts/`. |
 | **Variable fonts / OpenType features** (small-caps, tabular nums, stylistic sets). | P2 | Expose when a loaded font exposes them. |
 | **Text truncation / max lines.** Figma has "truncate text" with ellipsis. | P1 | Add `text.truncate: {lines, ellipsis: true}`. |
-| **Lists (bulleted/numbered)** — Figma doesn't have these natively but they're a Penfig differentiator opportunity. | P2 | Add `text.list: 'bullet'|'number'`; draw bullet/number adornments. |
+| **Lists (bulleted/numbered)** — Figma doesn't have these natively but they're a ARCO differentiator opportunity. | P2 | Add `text.list: 'bullet'|'number'`; draw bullet/number adornments. |
 | **RTL / CJK vertical text.** | P1 | Detect direction from content; add writing-mode option (horizontal/vertical). |
 | **Text on path** (the user's spec includes this). | P2 | Render text along a vector path using `getPointAtLength` emulation. |
 | **Letter-spacing % vs px.** Figma uses % of font size; we use px. | P1 | Convert units to match Figma. |
-| **Import/export text fidelity is fragile.** Text shifts between Figma↔Penfig today due to line-height and fonts-missing differences. | P0 | Bundle default fonts as data URIs or fall back gracefully; measure text with the actual browser font metrics. |
+| **Import/export text fidelity is fragile.** Text shifts between Figma↔ARCO today due to line-height and fonts-missing differences. | P0 | Bundle default fonts as data URIs or fall back gracefully; measure text with the actual browser font metrics. |
 
 ---
 
@@ -485,7 +485,7 @@ Timeline UI in a bottom panel with draggable keyframes.
 |-----|--------|
 | **`.pfg` v1 is minimal.** No asset deduplication, no checksums beyond ZIP CRC32, no forward-compatible schema migrations, no compressed assets (DEFLATE), no edit-history log, no recovery metadata. | Build `.pfg` v2 with all of §2 (deterministic ZIP DEFLATE, manifest version, schemaVersion per file, per-blob SHA-256, asset dedup by hash, fonts/, pages/ shard for large docs, recovery journal, optional signed history). |
 | **`.fig` import loses styling fidelity** in areas: radial/angle gradients, inner shadows, background blur, stroke styles (dashes/caps), advanced effects, component properties/variants matrix. | Extend `mapNode` for each missing paint/effect; add the corresponding model fields. |
-| **`.fig` export uses the openfig v101 schema** where COMPONENT is SYMBOL and instance binding goes via `overriddenSymbolID` (documented deviation: real Figma sees instances as detached). | Generate against a newer Figma schema version where `mainComponentGuid` exists; add schema version detection. |
+| **`.fig` export uses the oarco v101 schema** where COMPONENT is SYMBOL and instance binding goes via `overriddenSymbolID` (documented deviation: real Figma sees instances as detached). | Generate against a newer Figma schema version where `mainComponentGuid` exists; add schema version detection. |
 | **SVG import is absent.** | Build SVG → node tree importer. |
 | **PDF import** not needed (niche), but **PDF export needs text-as-text** (currently text renders as filled paths via canvas — need native PDF text operators for selectable text). | Add text operators to pdfexport.js with correct font embedding. |
 | **JPG/WEBP/GIF import** as image fills — drag/drop an image file. | Add file-drop handler + image conversion. |
@@ -578,7 +578,7 @@ Main Thread                Worker                        GPU
 ### P0/P1 gaps
 | Gap | Priority | Action |
 |-----|----------|--------|
-| **Last-write-wins loses edits** when two users edit simultaneously. | P1 | Add CRDT (Yjs is ideal — **but adding Yjs would be a runtime dependency.** Penfig stays zero-dep for the main bundle; design a minimal CRDT or use a per-operation log with epoch counters.) |
+| **Last-write-wins loses edits** when two users edit simultaneously. | P1 | Add CRDT (Yjs is ideal — **but adding Yjs would be a runtime dependency.** ARCO stays zero-dep for the main bundle; design a minimal CRDT or use a per-operation log with epoch counters.) |
 | **No server relay.** Cross-machine collaboration needs a WebSocket server. | P2 | Build tiny relay server (separate repo, optional self-host); client code already abstracts over BroadcastChannel so adding a WebSocket transport is straightforward. |
 | **No cursor presence labels** (names show as single-letter dots; tooltip on hover). | P1 | Show full name on hover. |
 | **Comments** exist but no threading/reactions/resolved history/mentions. | P1 | Add threaded comments, @mentions with autocomplete, resolved filter. |
@@ -613,8 +613,8 @@ Canvas Layout Vector      Design Code QA
 ```
 
 - AI design assistant (chat that can create/modify nodes via the plugin RPC
-  API — no privileged access; it calls the same penfig API human plugins do)
-- AI generation (prompt → frame with real Penfig nodes, NOT a flat PNG)
+  API — no privileged access; it calls the same arco API human plugins do)
+- AI generation (prompt → frame with real ARCO nodes, NOT a flat PNG)
 - AI agent (autonomous refactoring: "make all cards consistent", "convert
   this grid to a 12-column responsive auto layout", "swap every color
   token to dark mode accessible contrast")

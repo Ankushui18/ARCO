@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Penfig — local test demo</title>
+  <title>ARCO — local test demo</title>
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -48,7 +48,7 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>Penfig — local test demo</h1>
+    <h1>ARCO — local test demo</h1>
     <div class="sub">
       Runs the <b>real app code</b> (the same modules <a href="index.html">index.html</a> loads) through 12 checks.
       No server, no network needed — the Figma <code>.fig</code> fixture used by check 2 is embedded in the page.
@@ -61,7 +61,7 @@
     <ul id="results"></ul>
     <div class="note">
       How to run:<br>
-      1. <b>Online (serves the whole app too):</b> <code>cd penfig &amp;&amp; python3 -m http.server 8080</code> → open
+      1. <b>Online (serves the whole app too):</b> <code>cd arco &amp;&amp; python3 -m http.server 8080</code> → open
       <code>http://localhost:8080/test-demo.html</code> — check 12 additionally fetches a real 9-vector
       Figma file from <code>fixtures/</code>.<br>
       2. <b>Offline:</b> double-click <code>test-demo.html</code> directly — checks 1–11 run as-is, check 12
@@ -98,7 +98,7 @@
       const totalEl = document.getElementById('total');
 
       // pre-render rows
-      for (const c of window.PenfigDemo.checks) {
+      for (const c of window.ARCODemo.checks) {
         const li = document.createElement('li');
         li.className = 'check';
         li.innerHTML = '<div class="row1"><span class="ico">…</span><span class="nm"></span>' +
@@ -125,7 +125,7 @@
         totalEl.className = '';
         const t0 = Date.now();
         try {
-          const results = await window.PenfigDemo.runAll(paint);
+          const results = await window.ARCODemo.runAll(paint);
           const passed = results.filter(r => r.ok && !r.skip).length;
           const skipped = results.filter(r => r.skip).length;
           const failed = results.length - passed - skipped;

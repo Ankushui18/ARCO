@@ -1,4 +1,4 @@
-/* layout.js — Penfig auto-layout engine.
+/* layout.js — ARCO auto-layout engine.
  *
  * Places children in PARENT-LOCAL coordinates and writes n.x/n.y for flow
  * children (AL-placed). n.x/n.y for manually-placed children are the

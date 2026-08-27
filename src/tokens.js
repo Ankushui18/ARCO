@@ -1,4 +1,4 @@
-/* tokens.js — Penfig design tokens (Figma-style variables with modes).
+/* tokens.js — ARCO design tokens (Figma-style variables with modes).
  *
  * Model (mirrors Figma's .fig VARIABLE_SET / VARIABLE nodes):
  *   doc.vars = {
@@ -232,7 +232,7 @@
   function exportW3C(doc) {
     const out = {};
     out.$schema = 'https://design-tokens.github.io/community-group/format/schema.json';
-    out.$description = 'Exported from ' + doc.name + ' (Penfig)';
+    out.$description = 'Exported from ' + doc.name + ' (ARCO)';
     for (const set of doc.vars.sets) {
       let bucket = out;
       const parts = set.name.split('/').filter(Boolean);
@@ -257,7 +257,7 @@
   function exportCSS(doc, modeId) {
     const mid = modeId || doc.vars.defaultMode;
     const modeName = ((doc.vars.modes.find(m => m.id === mid) || { name: 'mode' }).name).toLowerCase().replace(/\s+/g, '-');
-    let css = '/* Penfig tokens — ' + doc.name + ' — mode: ' + modeName + ' */\n';
+    let css = '/* ARCO tokens — ' + doc.name + ' — mode: ' + modeName + ' */\n';
     css += doc.vars.modes.length > 1 ? ':root[data-mode="' + modeName + '"], :root {\n' : ':root {\n';
     for (const set of doc.vars.sets) {
       css += '  /* ' + set.name + ' */\n';

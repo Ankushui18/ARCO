@@ -1,4 +1,4 @@
-/* ui-panels.js — Penfig panels: layers, pages, inspector, tokens, menus */
+/* ui-panels.js — ARCO panels: layers, pages, inspector, tokens, menus */
 (function (global) {
   'use strict';
   const M = global.Model;
@@ -814,11 +814,11 @@
       wrap.innerHTML = `
         <div class="pf-modal-card">
           <div class="pf-modal-head"><b>Plugins</b><button class="ed-iconbtn pf-modal-x">${Ico('close',{size:10})}</button></div>
-          <div class="pl-trust"><b>${Ico('play',{size:11})} Run</b> headless plugins execute in a sandboxed Web Worker (async <code>penfig</code> API, whitelisted RPC only) — where Workers are unavailable they fall back to trusted local code, as labeled in the output. <b>${Ico('plugin',{size:12})} Open</b> UI plugins run sandboxed (iframe, scripts-only) and may only call the same whitelisted RPC surface.</div>
+          <div class="pl-trust"><b>${Ico('play',{size:11})} Run</b> headless plugins execute in a sandboxed Web Worker (async <code>arco</code> API, whitelisted RPC only) — where Workers are unavailable they fall back to trusted local code, as labeled in the output. <b>${Ico('plugin',{size:12})} Open</b> UI plugins run sandboxed (iframe, scripts-only) and may only call the same whitelisted RPC surface.</div>
           <div class="pl-list"></div>
           <div class="pf-title" style="margin-top:10px">New custom plugin</div>
-          <div class="pl-new"><input type="text" id="pl-name" placeholder="Name"><textarea id="pl-code" rows="6" placeholder='Headless code (optional).\ne.g. penfig.toast("hi"); penfig.refresh(); return "done";'></textarea>
-          <textarea id="pl-ui" rows="6" placeholder='UI code (optional) — runs in a sandboxed panel; use await penfig.call("doc")...\ne.g. const doc = await penfig.call("doc"); document.body.textContent = doc.name;'></textarea>
+          <div class="pl-new"><input type="text" id="pl-name" placeholder="Name"><textarea id="pl-code" rows="6" placeholder='Headless code (optional).\ne.g. arco.toast("hi"); arco.refresh(); return "done";'></textarea>
+          <textarea id="pl-ui" rows="6" placeholder='UI code (optional) — runs in a sandboxed panel; use await arco.call("doc")...\ne.g. const doc = await arco.call("doc"); document.body.textContent = doc.name;'></textarea>
           <div class="pl-acts"><button data-pl="save">+ Add to list</button></div></div>
           <pre class="pl-out" style="display:none"></pre>
         </div>`;
@@ -1747,7 +1747,7 @@
         <hr>
         <div class="pf-title">File formats</div>
         <button data-x="fig">${Ico('fig',{size:13})} Figma file (.fig)</button>
-        <button data-x="pfg">${Ico('pfg',{size:13})} Penfig file (.pfg)</button>
+        <button data-x="pfg">${Ico('pfg',{size:13})} ARCO file (.pfg)</button>
         <hr>
         <div class="pf-title">Design tokens</div>
         <button data-x="tok-json">${Ico('code',{size:12})} JSON (W3C DTCG)</button>
@@ -2078,7 +2078,7 @@
     try {
       const bytes = global.Dash.exportPfgBytes(doc);
       global.Dash.downloadBytes(bytes, doc.name + '.pfg', 'application/zip');
-      App.toast('Exported ' + doc.name + '.pfg (Penfig native)', 4000, 'success');
+      App.toast('Exported ' + doc.name + '.pfg (ARCO native)', 4000, 'success');
     } catch (err) {
       console.error(err);
       App.toast('.pfg export failed: ' + err.message, 6000, 'error');

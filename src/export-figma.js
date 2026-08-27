@@ -12,7 +12,7 @@
   }
 
   function saveBlob(blob, name) {
-    if (global.PenfigSave && global.PenfigSave.saveBlob) return global.PenfigSave.saveBlob(blob, name);
+    if (global.ARCOSave && global.ARCOSave.saveBlob) return global.ARCOSave.saveBlob(blob, name);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = name;

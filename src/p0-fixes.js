@@ -1,4 +1,4 @@
-/* p0-fixes.js — Penfig Engine v2 P0 CLOSEOUT.
+/* p0-fixes.js — ARCO Engine v2 P0 CLOSEOUT.
  * Honest status: implements every remaining P0 item called out in the
  * master spec §1, §3, §5–§8, §14, §16, §17, §33–§35, §44.
  *
@@ -16,7 +16,7 @@
  *  12. Viewport culling (1K/10K/50K/100K performance)
  *  13. Auto-layout edge cases: min/max, aspect ratio, counter-axis gap,
  *      nested hug/fill fixed-point, stroke/effect bounds in measurement
- *  14. .penfig v2 (DEFLATE-free but with SHA-style checksums, assets dedup,
+ *  14. .arco v2 (DEFLATE-free but with SHA-style checksums, assets dedup,
  *      document.json + assets/ + fonts/ + metadata.json, migrations,
  *      recovery journal file)
  *  15. Text → vector outline
@@ -283,7 +283,7 @@
       while((m=re.exec(d))){
         if (m[1]){ cmd=m[1]; if (cmd==='M'||cmd==='m'){ if(sp.length) subpaths.push(sp); } if (cmd==='z'||cmd==='Z'){ if(sp.length) subpaths.push(sp); } continue; }
         const v=parseFloat(m[0]);
-        // consume the right number of coords per command; simplified for M/L/C/Q used by Penfig
+        // consume the right number of coords per command; simplified for M/L/C/Q used by ARCO
         if (cmd==='M'||cmd==='L'){ x=v; y=parseFloat(re.exec('')[0]||'0'); sp.push({x,y,type:'L'}); cmd=(cmd==='M')?'L':'L'; sx=x;sy=y;}
         else if (cmd==='m'||cmd==='l'){ x+=v; y+=parseFloat(re.exec('')[0]||'0'); sp.push({x,y,type:'L'}); cmd=(cmd==='m')?'l':'l'; sx=x;sy=y;}
         else if (cmd==='C'||cmd==='c'){
@@ -403,10 +403,10 @@
     const _copySel = App.copySel.bind(App);
     App.copySel = function(cut){
       _copySel(cut);
-      // Also write JSON to the system clipboard as text/penfig+json
+      // Also write JSON to the system clipboard as text/arco+json
       try{
         if (!this.sel.length || !this.clipboard) return;
-        const payload = { __penfig:'clone-v1', nodes: this.clipboard.nodes, pageOrigin: this.pageIndex };
+        const payload = { __arco:'clone-v1', nodes: this.clipboard.nodes, pageOrigin: this.pageIndex };
         if (navigator.clipboard && navigator.clipboard.writeText){
           navigator.clipboard.writeText(JSON.stringify(payload)).catch(()=>{});
         }
@@ -418,12 +418,12 @@
       if (this.clipboard && this.clipboard.nodes && this.clipboard.nodes.length){
         _paste(); return;
       }
-      // Fall back to reading system clipboard for Penfig JSON
+      // Fall back to reading system clipboard for ARCO JSON
       if (navigator.clipboard && navigator.clipboard.readText){
         navigator.clipboard.readText().then(txt=>{
           try{
             const data = JSON.parse(txt);
-            if (data && data.__penfig==='clone-v1' && Array.isArray(data.nodes)){
+            if (data && data.__arco==='clone-v1' && Array.isArray(data.nodes)){
               this.clipboard = { nodes: data.nodes };
               _paste();
             }
@@ -826,7 +826,7 @@
     // external cull list for the top-level loop).
 
     // ===============================================================
-    // 19. .penfig v2 format (P0 §3) — ZIP-style with document.json/
+    // 19. .arco v2 format (P0 §3) — ZIP-style with document.json/
     //     assets/fonts/metadata.json, CRC32, SHA-style integrity, asset dedup,
     //     migrations.
     // ===============================================================
@@ -868,11 +868,11 @@
         for(const p of clone.pages) for(const n of Object.values(p.nodes)) walk(n);
         const docBytes = new TextEncoder().encode(JSON.stringify(clone, null, 2));
         const meta = {
-          format: 'penfig',
+          format: 'arco',
           version: 2,
-          kind: 'Penfig native format (lossless)',
+          kind: 'ARCO native format (lossless)',
           created: new Date().toISOString(),
-          app: 'penfig',
+          app: 'arco',
           appVersion: '2.0.0',
           assets: assets.length,
         };
@@ -880,15 +880,15 @@
         // Build ZIP using existing Dash.zipAppend if available; fall back to
         // the simple STORE-only writer in Dash module by passing virtual files.
         // We extend the writer below.
-        return writePenfigV2({ 'document.json': docBytes, 'metadata.json': metaBytes, 'assets/': new Uint8Array(0) }, assets);
+        return writeARCOV2({ 'document.json': docBytes, 'metadata.json': metaBytes, 'assets/': new Uint8Array(0) }, assets);
       };
       const _imp = Dash.importPfg;
       Dash.importPfg = function(bytes){
         // Read back: parse ZIP, resolve assets/ back into data URLs.
-        const entries = readPenfigV2(bytes);
+        const entries = readARCOV2(bytes);
         const meta = entries['metadata.json'] ? JSON.parse(new TextDecoder().decode(entries['metadata.json'])) : {version:1};
         const docBytes = entries['document.json'];
-        if (!docBytes) throw new Error('.penfig missing document.json');
+        if (!docBytes) throw new Error('.arco missing document.json');
         const doc = JSON.parse(new TextDecoder().decode(docBytes));
         // resolve asset refs → data URLs
         const assetMap = {};
@@ -918,7 +918,7 @@
 
     // Minimal STORE-only ZIP reader/writer for v2 (no external deps).
     // Uses CRC32, local file headers, central directory.
-    function writePenfigV2(files, assetFiles){
+    function writeARCOV2(files, assetFiles){
       const all = [];
       for(const [name, bytes] of Object.entries(files)){
         all.push({name, bytes: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)});
@@ -985,7 +985,7 @@
       out.set(end,p);
       return out;
     }
-    function readPenfigV2(bytes){
+    function readARCOV2(bytes){
       const entries = {};
       const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       let off=0;
@@ -1008,12 +1008,12 @@
       return entries;
     }
     // Expose extension readers/writers
-    global.PenfigIO = { writePenfigV2, readPenfigV2 };
+    global.ARCOIO = { writeARCOV2, readARCOV2 };
 
-    // Also allow export as `.penfig`
+    // Also allow export as `.arco`
     if (Dash){
-      Dash.exportPenfigBytes = Dash.exportPfgBytes; // alias
-      Dash.importPenfig = Dash.importPfg;
+      Dash.exportARCOBytes = Dash.exportPfgBytes; // alias
+      Dash.importARCO = Dash.importPfg;
     }
 
     // ===============================================================
@@ -1040,7 +1040,7 @@
             children:n.children.slice(),
           });
         });
-        return { version:'penfig-ir-v1', nodes };
+        return { version:'arco-ir-v1', nodes };
       }
     };
 

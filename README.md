@@ -1,6 +1,6 @@
-# Penfig — a Figma-style design tool in the browser
+# ARCO — a Figma-style design tool in the browser
 
-Penfig is a complete Figma-style design tool: a **Figma-like dashboard**, a
+ARCO is a complete Figma-style design tool: a **Figma-like dashboard**, a
 canvas editor with frames/text/shapes, a **custom auto-layout engine**
 (deliberately **not** CSS flexbox), **Figma-style design tokens** (variables
 with Light/Dark modes), and **real `.fig` import & export** — the actual
@@ -8,9 +8,9 @@ Figma kiwi/ZIP byte format, not a lookalike.
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│  Penfig                                                            │
+│  ARCO                                                            │
 │                                                                    │
-│  .fig (Figma's real format) ⇄ Penfig document ⇄ canvas renderer    │
+│  .fig (Figma's real format) ⇄ ARCO document ⇄ canvas renderer    │
 │       figio.js (kiwi)           model.js         render.js         │
 │       figconv.js      ──▶   layout.js  ◀──  tokens.js              │
 │                                  │                                │
@@ -25,7 +25,7 @@ Figma kiwi/ZIP byte format, not a lookalike.
 ## Run it
 
 ```bash
-cd /home/user/penfig
+cd /home/user/arco
 python3 -m http.server 8080 --bind 0.0.0.0
 # → http://localhost:8080   (live preview in the sandbox)
 ```
@@ -52,7 +52,7 @@ components, durable persistence, constraints — and reports pass/fail in-page
 
 ### What “offline” means here (precisely)
 
-| Level | Meaning | Penfig |
+| Level | Meaning | ARCO |
 |-------|---------|--------|
 | A | No internet required to run | ✅ no `fetch`/`WebSocket`/CDN in the runtime; everything ships in the folder |
 | B | Persistent local application (durable storage, crash recovery, multi-user) | ✅ single-user durable: files persist in **IndexedDB** (multi-MB, survives reloads; verified by test across a simulated app restart), with a `localStorage` fallback + loud quota toast where IndexedDB is unavailable. Multi-user still needs a server |
@@ -99,7 +99,7 @@ modes + `VARIABLE` per-mode color/float/bool/string values).
 
 **Export** (`src/figconv.js` → `exportFig`): writes a real `.fig` —
 `fig-kiwi` prelude, **version 101**, the current 550-definition Figma kiwi
-schema (from [OpenFig-org/openfig-core](https://github.com/OpenFig-org/openfig-core),
+schema (from [OpenFig-org/oarco-core](https://github.com/OpenFig-org/oarco-core),
 bundled as fallback), deflateRaw message chunk, `meta.json`, thumbnail, images
 by SHA-1 hash. **Vector nodes are written as `VECTOR`** with their path
 re-encoded into *both* a `fillGeometry[0].commandsBlob` and a
@@ -107,7 +107,7 @@ re-encoded into *both* a `fillGeometry[0].commandsBlob` and a
 path), the blobs stored in `message.blobs` and referenced by index — the same
 dual representation Figma itself writes. **Components export as `SYMBOL`
 frames and instances as `INSTANCE` nodes** bound back to their (variant)
-component via `overriddenSymbolID` — the v101 openfig schema has no
+component via `overriddenSymbolID` — the v101 oarco schema has no
 `COMPONENT` type and no `mainComponentGuid` field, so the binding rides the
 legacy symbol-reference field (documented deviation: in real Figma the
 instance keeps its cloned subtree — visual parity — but reads as detached,
@@ -234,7 +234,7 @@ transitions), **⟨/⟩ Dev mode** (spec + CSS/HTML codegen in the inspector),
   updates), the Assets tab in the left rail (double-click to drop an
   instance), update/rename/delete a component set.
 - **Shared libraries** (`global.Libraries`, same module) — Figma's team
-  libraries are a cloud feature; Penfig's equivalent **links other local
+  libraries are a cloud feature; ARCO's equivalent **links other local
   files as component libraries** (Assets tab → “＋ Link a file as
   library…”). Linked files are read live from the local store: their
   components appear in Assets with a 📚 badge, double-click drops a
@@ -268,7 +268,7 @@ transitions), **⟨/⟩ Dev mode** (spec + CSS/HTML codegen in the inspector),
   dots, full-doc last-write-wins sync (300 ms debounce).
 - **Plugins** (`src/plugins.js`) — 5 built-ins + a plugin modal with custom
   plugins (persisted in localStorage) running against a small, explicit,
-  **async** `penfig` API (`doc`, `setMode`, `selection`, `setSelection`,
+  **async** `arco` API (`doc`, `setMode`, `selection`, `setSelection`,
   `listNodes`, `getNode`, `setPos`, `setProps`, `create`, `remove`,
   `history.begin/end`, `refresh`, `toast`, console capture). The API is the
   RPC contract: plain data in, plain data out — nodes arrive as summaries and
@@ -286,7 +286,7 @@ transitions), **⟨/⟩ Dev mode** (spec + CSS/HTML codegen in the inspector),
   to `new Function` in the local realm — a **trusted-local** channel, clearly
   labeled as such in the UI. **🖥 Open (UI plugins)** — a
   `sandbox="allow-scripts"` iframe (srcdoc) whose UI code talks to the app
-  through the *same* whitelisted RPC bridge (`penfig.call(name, ...)`). The
+  through the *same* whitelisted RPC bridge (`arco.call(name, ...)`). The
   built-in **“Theme switcher (UI plugin)”** demos it: lists token modes,
   switches on click, toasts the result.
 
@@ -311,9 +311,9 @@ backup (.fig)] [Try again]** buttons, §33).
 
 **Model** (`src/model.js`) — JSON-safe scene graph (parent referenced by id, no
 circular pointers), undo/redo history with batch support, durable file
-store: **IndexedDB** primary (`penfig-files` db, `files` store, async writes
+store: **IndexedDB** primary (`arco-files` db, `files` store, async writes
 debounced; `Model.store.init()`/`flush()`), **localStorage fallback**
-(`penfig.files.v1`) where IndexedDB is unavailable — reads are always
+(`arco.files.v1`) where IndexedDB is unavailable — reads are always
 synchronous off the in-memory list, so the editor never waits on storage.
 
 **Renderer** (`src/render.js`) — canvas 2D: dot grid, world transform, frame
@@ -493,7 +493,7 @@ npm run build        # or: node scripts/ensure-build.mjs (builds only what's mis
 
 ## `.fig` compatibility — measured against real Figma files
 
-Verified by decoding **four real Figma files** (OpenFig-org/openfig-core test
+Verified by decoding **four real Figma files** (OpenFig-org/oarco-core test
 fixtures, kept in `figlib/ref/real/`) with our parser:
 
 | File | Version | Contents | Result |
@@ -556,7 +556,7 @@ model + per-side borders (`backgroundColor`, `border*Weight`,
   joins follow real stroke physics (a round join rounds only the side the
   offset opens up).
 - **Documented `.fig` export deviations (new this round):** `arrowEnd`
-  (arrow) and `section` (section frame) are Penfig-only flags — Figma has no
+  (arrow) and `section` (section frame) are ARCO-only flags — Figma has no
   equivalent node types, so they export as a plain line/frame and the
   arrowhead/section styling is lost in the round trip. Pen-drawn paths
   default to a `#111111` solid fill (Figma's pen default is a stroke; this is
@@ -604,7 +604,7 @@ Plugins 80→88 were the previous round's gains; vectors: `.fig` field coverage
 |---|---|---|---|
 | Design system | 95% | components · variants · instances · bool+text props (name-bound, overrides survive updates), shared libraries with update-all/unlink, text+paint styles | libraries are local-store-based; no cross-browser distribution |
 | Tokens (variables) | 95% | sets/modes/live switching, per-mode aliases (cycle-guarded), W3C JSON + CSS export/import, `.fig` round-trip of per-mode values | no variables-in-prototypes / conditional logic |
-| Plugins | 88% | async `penfig` API executing in a **sandboxed Web Worker** (separate realm, whitelisted `postMessage` RPC, 15 s timeout) with labeled local fallback; UI plugins in a sandboxed iframe; 5 built-ins + persisted custom plugins | no marketplace/distribution; deliberately small RPC surface |
+| Plugins | 88% | async `arco` API executing in a **sandboxed Web Worker** (separate realm, whitelisted `postMessage` RPC, 15 s timeout) with labeled local fallback; UI plugins in a sandboxed iframe; 5 built-ins + persisted custom plugins | no marketplace/distribution; deliberately small RPC surface |
 | Auto layout | 100% | custom engine (measure→distribute→place, **not flexbox**): wrap + cross-axis gap, 5 primary-axis modes, grow/fill weights, min/max, absolute children, reverse, constraints + resize-to-fit | (parity with Figma's implemented semantics; canvas, not WebGL, renderer) |
 | Dev mode | 100% | measure overlay (W/H, x/y, edge distances), CSS/HTML codegen, per-node annotations | — |
 | Export | 100% | PNG (canvas), SVG (pure JS), PDF (pure JS spec-valid 1.4 with real vector paths), `.fig` (v101 kiwi, real `VECTOR` blobs, `SYMBOL`/`INSTANCE` component round-trip) | exports not yet opened in real Figma / a PDF viewer from this sandbox |
@@ -635,7 +635,7 @@ closes them server-side.
 
 ## Relationship to Penpot
 
-Penfig is the reference implementation for making
+ARCO is the reference implementation for making
 [Penpot](https://github.com/penpot/penpot) Figma-like. The Penpot repo clone at
 `/home/user/penpot` contains the plan and the building blocks:
 
