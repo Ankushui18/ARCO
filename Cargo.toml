@@ -1,0 +1,27 @@
+[package]
+name = "arco_native"
+version = "0.14.0-beta.12"
+edition = "2021"
+
+[lib]
+name = "arco_native"
+path = "src/lib.rs"
+
+[[bin]]
+name = "arco_native"
+path = "src/main.rs"
+
+[[bin]]
+name = "render_headless"
+path = "src/bin/render_headless.rs"
+
+[[bin]]
+name = "x_native_app"
+path = "src/bin/x_native_app.rs"
+
+[dependencies]
+png = "0.18.1"
+pollster = "1.0.1"
+vello = "0.1"
+wgpu = "0.19"
+winit = { version = "0.29", features = ["rwh_06"] }

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="700" viewBox="0 0 1000 700">
+<defs>
+<linearGradient id="g1" x1="0" y1="0" x2="200" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff5a00"/><stop offset="1" stop-color="#8e2de2"/></linearGradient>
+</defs>
+<g transform="translate(0 0)"><g transform="translate(24 280) rotate(22.5 120 70)"><rect width="240" height="140" rx="18" fill="#0d99ff"/></g>
+<g transform="translate(292 290)"><rect width="200" height="120" rx="0" fill="url(#g1)"/></g>
+<g transform="translate(520 290)" opacity="0.75"><ellipse cx="60" cy="60" rx="60" ry="60" fill="#f24822"/></g>
+<g transform="translate(668 335)"><text y="24" font-size="24" font-family="monospace" fill="#000000">X NATIVE 0.4</text></g>
+</g>
+</svg>
